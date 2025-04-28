@@ -8,3 +8,5 @@ numpy==1.24.3
 python-dotenv==1.0.0
 gunicorn==21.2.0
 psycopg2-binary==2.9.7
+pydantic==2.7.1  # Added for data validation
+pytest==8.1.1    # Added for unit testing

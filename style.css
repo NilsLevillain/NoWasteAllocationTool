@@ -1,0 +1,130 @@
+body {
+    font-family: sans-serif;
+    line-height: 1.6;
+    margin: 20px;
+    background-color: #f4f4f4;
+}
+
+h1, h2 {
+    color: #333;
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.container {
+    display: flex;
+    gap: 30px;
+    margin-bottom: 30px;
+    background-color: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.input-section, .param-section {
+    flex: 1;
+}
+
+.input-section h2, .param-section h2, .results-section h2 {
+    border-bottom: 1px solid #ccc;
+    padding-bottom: 10px;
+    margin-bottom: 15px;
+}
+
+.data-display {
+    margin-bottom: 15px;
+    background-color: #eee;
+    padding: 10px;
+    border-radius: 4px;
+    max-height: 150px; /* Limit height and make scrollable */
+    overflow-y: auto; /* Add scrollbar if content overflows */
+}
+
+.data-display h3 {
+    margin-top: 0;
+    margin-bottom: 5px;
+    font-size: 1em;
+    color: #555;
+}
+
+pre {
+    white-space: pre-wrap; /* Allow wrapping */
+    word-wrap: break-word;
+    font-size: 0.9em;
+    background-color: #fff;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.param-input {
+    margin-bottom: 15px;
+}
+
+.param-input label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+    color: #555;
+}
+
+.param-input input[type="number"],
+.param-input input[type="text"] {
+    width: calc(100% - 16px); /* Adjust for padding */
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-sizing: border-box; /* Include padding in width */
+}
+
+button {
+    display: block;
+    width: 100%;
+    padding: 10px 15px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1em;
+    transition: background-color 0.3s ease;
+}
+
+button:hover {
+    background-color: #0056b3;
+}
+
+#status-message {
+    margin-top: 15px;
+    font-weight: bold;
+    text-align: center;
+}
+
+.results-section {
+    background-color: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+#results-table-container table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+}
+
+#results-table-container th,
+#results-table-container td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: left;
+}
+
+#results-table-container th {
+    background-color: #f2f2f2;
+    font-weight: bold;
+}
+
+#results-table-container tr:nth-child(even) {
+    background-color: #f9f9f9;
+}

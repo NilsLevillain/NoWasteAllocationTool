@@ -15,9 +15,10 @@ class User(db.Model):
 class Product(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     item_id = db.Column(db.String(50), unique=True)
-    brand = db.Column(db.String(100))
-    axe = db.Column(db.String(50))
-    division = db.Column(db.String(50))
+    brand = db.Column(db.String(100), nullable=True) # Allow nullable for flexibility
+    division = db.Column(db.String(50), nullable=True) # Allow nullable
+    axe = db.Column(db.String(100), nullable=True) # Allow nullable, maybe increase length
+    subaxis = db.Column(db.String(100), nullable=True) # Add subaxis, allow nullable
     donation_eligible = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -26,8 +27,9 @@ class Product(db.Model):
             'id': self.id,
             'item_id': self.item_id,
             'brand': self.brand,
-            'axe': self.axe,
             'division': self.division,
+            'axe': self.axe,
+            'subaxis': self.subaxis, # Add subaxis
             'donation_eligible': self.donation_eligible
         }
 

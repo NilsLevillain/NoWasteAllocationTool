@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Allocation Tool</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>Stock Allocation Tool</h1>
+
+    <div class="container">
+        <div class="input-section">
+            <h2>Input Data (Sample)</h2>
+            <div class="data-display">
+                <h3>Products</h3>
+                <pre id="products-data"></pre>
+            </div>
+            <div class="data-display">
+                <h3>Channels</h3>
+                <pre id="channels-data"></pre>
+            </div>
+            <div class="data-display">
+                <h3>Inventory</h3>
+                <pre id="inventory-data"></pre>
+            </div>
+            <div class="data-input">
+                <h3>Demand Data (JSON)</h3>
+                <textarea id="demand-data" rows="6" placeholder='e.g., {\n  "(\"SKU001\", \"STORE1\")": 40,\n  "(\"SKU002\", \"STORE1\")": 20\n}'></textarea>
+            </div>
+             <!-- Removed Revenue Data Input Section -->
+            </div>
+        </div>
+
+        <div class="param-section">
+            <h2>Optimization Parameters & Auth</h2>
+             <div class="param-input">
+                <label for="jwt-token">JWT Token:</label>
+                <input type="text" id="jwt-token" placeholder="Paste your JWT token here">
+            </div>
+            <div class="param-input">
+                <label for="min-coverage">Default Min Coverage (0.0-1.0):</label>
+                <input type="number" id="min-coverage" step="0.1" min="0" max="1" placeholder="e.g., 0.5">
+            </div>
+            <div class="param-input">
+                <label for="min-skus">Min SKUs per Store:</label>
+                <input type="number" id="min-skus" step="1" min="0" placeholder="e.g., 2">
+            </div>
+            <div class="param-input">
+                <label for="restricted-brands">Restricted Brands for Donation (comma-separated):</label>
+                <input type="text" id="restricted-brands" placeholder="e.g., BrandA,BrandX">
+            </div>
+            <button id="run-button">Run Allocation</button>
+            <div id="status-message"></div>
+        </div>
+    </div>
+
+    <div class="results-section">
+        <h2>Allocation Results</h2>
+        <div id="results-table-container">
+            <!-- Results table will be generated here -->
+            <p>Click "Run Allocation" to see results.</p>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
