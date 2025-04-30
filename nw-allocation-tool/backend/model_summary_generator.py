@@ -1,8 +1,8 @@
 import pandas as pd
 from pulp import *
 # Import the function and necessary schema/classes
-from allocation_service import optimize_allocation
-from schemas import OptimizationParameters
+from .solver import optimize_allocation # Use relative import
+from .schemas import OptimizationParameters # Use relative import
 
 # --- Create Sample Data to Build the Model ---
 # (You can reuse the sample data from allocation_service.py or define specific data here)

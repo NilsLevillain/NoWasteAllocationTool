@@ -1,0 +1,67 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment folders
+venv/
+env/
+.venv/
+.env/
+
+# VS Code and IDE settings
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# MacOS system files
+.DS_Store
+
+# Logs
+*.log
+
+# Environment variable files
+.env
+
+# Python egg and package distribution
+*.egg-info/
+dist/
+build/
+
+# Frontend (if any)
+node_modules/
+# Assuming the 'static' folder inside 'frontend' might contain build artifacts or node_modules
+frontend/static/node_modules/
+frontend/static/build/
+frontend/static/dist/
+
+# Test cache
+.cache/
+pytest_cache/
+
+# Coverage reports
+htmlcov/
+.coverage
+
+# Jupyter notebooks checkpoints (optional if you use them)
+.ipynb_checkpoints/
+
+# Database file (if using SQLite like in the example)
+*.db
+*.sqlite
+*.sqlite3
+instance/ # Often used by Flask for instance-specific config/db
+
+# Model files (if generated)
+*.lp
+*.mps
+*.sol
+model_summary.md # Generated summary
+
+# Data files (if large or sensitive - adjust as needed)
+# data/ExcelParameters/
+# data/instance/
+
+# OS generated files
+Thumbs.db

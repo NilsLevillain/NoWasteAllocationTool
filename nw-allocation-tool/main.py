@@ -4,9 +4,9 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from datetime import datetime, timedelta
 import pandas as pd
-from models import db, Product, Inventory, Channel, Allocation, User
-from allocation_service import optimize_allocation
-from config import Config
+from backend.models import db, Product, Inventory, Channel, Allocation, User
+from backend.solver import optimize_allocation
+from backend.config import Config
 
 app = Flask(__name__)
 app.config.from_object(Config)
