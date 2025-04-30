@@ -1,7 +1,15 @@
 import unittest
 import pandas as pd
-from allocation_service import optimize_allocation
-from schemas import OptimizationParameters
+import sys
+import os
+
+# Add the project root directory to the Python path
+# This allows imports like 'from backend.solver import ...'
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, project_root)
+
+from backend.solver import optimize_allocation
+from backend.schemas import OptimizationParameters # Corrected import path
 
 class TestAllocationService(unittest.TestCase):
 

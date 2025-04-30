@@ -52,9 +52,9 @@ class TestSolver(unittest.TestCase):
             min_skus_per_store=None,
             restricted_brands_for_donation=None
         )
-        status, results = optimize_allocation(
+        model, status, results = optimize_allocation(
             self.sample_products, self.sample_channels, self.sample_inventory,
-            self.sample_demand, self.sample_revenue, params
+            self.sample_demand, params
         )
         self.assertEqual(status, "Optimal")
         self.assertTrue(len(results) > 0) # Check that some allocation happened
@@ -66,9 +66,9 @@ class TestSolver(unittest.TestCase):
             min_skus_per_store=None,
             restricted_brands_for_donation=['BrandA'] # SKU001, SKU002 are BrandA
         )
-        status, results = optimize_allocation(
+        model, status, results = optimize_allocation(
             self.sample_products, self.sample_channels, self.sample_inventory,
-            self.sample_demand, self.sample_revenue, params
+            self.sample_demand, params
         )
         self.assertEqual(status, "Optimal")
         for res in results:
@@ -83,9 +83,9 @@ class TestSolver(unittest.TestCase):
             min_skus_per_store=min_skus_required,
             restricted_brands_for_donation=None
         )
-        status, results = optimize_allocation(
+        model, status, results = optimize_allocation(
             self.sample_products, self.sample_channels, self.sample_inventory,
-            self.sample_demand, self.sample_revenue, params
+            self.sample_demand, params
         )
         self.assertEqual(status, "Optimal")
 
@@ -113,9 +113,9 @@ class TestSolver(unittest.TestCase):
             min_skus_per_store=None,
             restricted_brands_for_donation=None
         )
-        status, results = optimize_allocation(
+        model, status, results = optimize_allocation(
             self.sample_products, self.sample_channels, self.sample_inventory,
-            self.sample_demand, self.sample_revenue, params
+            self.sample_demand, params
         )
         self.assertEqual(status, "Optimal")
 
@@ -184,8 +184,8 @@ class TestSolver(unittest.TestCase):
             restricted_brands_for_donation=None
         )
 
-        status, results = optimize_allocation(
-            products, channels, inventory, demand, revenue, params
+        model, status, results = optimize_allocation(
+            products, channels, inventory, demand, params
         )
         self.assertEqual(status, "Optimal")
 

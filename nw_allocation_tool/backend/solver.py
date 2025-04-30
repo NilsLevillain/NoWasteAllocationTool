@@ -1,6 +1,6 @@
 import pulp
 import pandas as pd
-from schemas import OptimizationParameters, CoverageDaysRule, OutletSKUCapacityRule, OutletAssortmentRule # Import updated schemas
+from schemas import OptimizationParameters, CoverageDaysRule, OutletSKUCapacityRule, OutletAssortmentRule
 from collections import defaultdict
 
 def optimize_allocation(products_df: pd.DataFrame,
