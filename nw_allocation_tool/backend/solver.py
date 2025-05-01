@@ -1,6 +1,6 @@
 import pulp
 import pandas as pd
-from schemas import OptimizationParameters, CoverageDaysRule, OutletSKUCapacityRule, OutletAssortmentRule
+from .schemas import OptimizationParameters, CoverageDaysRule, OutletSKUCapacityRule, OutletAssortmentRule
 from collections import defaultdict
 
 def optimize_allocation(products_df: pd.DataFrame,
@@ -12,10 +12,10 @@ def optimize_allocation(products_df: pd.DataFrame,
     Optimizes the allocation of inventory to different channels using Mixed Integer Programming.
 
     Args:
-        products_df: DataFrame containing product information (indexed by SKU, columns: 'brand', 'division', 'axe', 'subaxis', 'metier', 'abc_class', etc.)
-        channels_df: DataFrame containing channel information (indexed by channel ID, columns: 'capacity', 'channel_type', etc.)
-        inventory_df: DataFrame containing inventory information (columns: 'product_sku', 'quantity')
-        demand_dict: Dictionary of WEEKLY demand {(product_sku, channel_id): demand_quantity}
+        products_df: DataFrame containing product information (indexed by EAN/SKU, columns: 'brand', 'division', 'axe', 'subaxis', 'metier', 'abc_class', etc.)
+        channels_df: DataFrame containing channel information (indexed by channel ID string, columns: 'capacity', 'channel_type', etc.)
+        inventory_df: DataFrame containing inventory information (columns: 'product_ean', 'quantity') # Expects 'product_ean'
+        demand_dict: Dictionary of WEEKLY demand {(product_ean, channel_id): demand_quantity} # Expects EAN
         parameters: OptimizationParameters object containing control parameters (coverage rules, capacity rules, assortment rules, etc.).
 
     Returns:
@@ -33,8 +33,8 @@ def optimize_allocation(products_df: pd.DataFrame,
     products = products_df.index.tolist() # List of SKUs
     channels = channels_df.index.tolist() # List of Channel IDs
 
-    # Aggregate inventory by product SKU
-    inventory_quantity = inventory_df.groupby('product_sku')['quantity'].sum().to_dict()
+    # Aggregate inventory by product EAN
+    inventory_quantity = inventory_df.groupby('product_ean')['quantity'].sum().to_dict() # Use 'product_ean'
 
     # Process parameter rules into efficient lookup dictionaries
     coverage_rules_dict = {(rule.channel_id, rule.abc_class): rule.coverage_days for rule in parameters.coverage_days_rules}
@@ -145,7 +145,8 @@ def optimize_allocation(products_df: pd.DataFrame,
 
 
     # 4. Donation Eligibility Constraints (Brand-Level Only):
-    donation_channels = channels_df[channels_df['channel_type'] == 'donation'].index.tolist()
+    # Correctly filter based on the 'channel_type' column before accessing the index
+    donation_channels = channels_df.loc[channels_df['channel_type'] == 'donation'].index.tolist()
     if parameters.restricted_brands_for_donation and donation_channels:
         restricted_brands = set(parameters.restricted_brands_for_donation) # These are 'brand'/'signature' names
         for p in products:
@@ -234,13 +235,13 @@ if __name__ == '__main__':
 
     # --- Sample Inventory ---
     sample_inventory_data = {
-        'product_sku': ['SKU001', 'SKU002', 'SKU003', 'SKU004', 'SKU005', 'SKU001'],
+        'product_ean': ['SKU001', 'SKU002', 'SKU003', 'SKU004', 'SKU005', 'SKU001'], # Use 'product_ean'
         'quantity': [50, 30, 40, 60, 25, 20] # SKU001 has 70 total
     }
     sample_inventory = pd.DataFrame(sample_inventory_data)
 
     # --- Sample Demand (Weekly) ---
-    sample_demand = {
+    sample_demand = { # Use EANs in keys
         ('SKU001', 'STORE1'): 14, # 2 per day
         ('SKU002', 'STORE1'): 7,  # 1 per day
         ('SKU003', 'OUTLET1'): 21, # 3 per day
