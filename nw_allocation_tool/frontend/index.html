@@ -1,68 +1,292 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Stock Allocation Tool</title>
+    <title>L'Oréal - No Waste Allocation</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 </head>
 <body>
-    <h1>Stock Allocation Tool</h1>
-
-    <div class="container">
-        <div class="input-section">
-            <h2>Input Data (Sample)</h2>
-            <div class="data-display">
-                <h3>Products</h3>
-                <pre id="products-data"></pre>
-            </div>
-            <div class="data-display">
-                <h3>Channels</h3>
-                <pre id="channels-data"></pre>
-            </div>
-            <div class="data-display">
-                <h3>Inventory</h3>
-                <pre id="inventory-data"></pre>
-            </div>
-            <div class="data-input">
-                <h3>Demand Data (JSON)</h3>
-                <textarea id="demand-data" rows="6" placeholder='e.g., {\n  "(\"SKU001\", \"STORE1\")": 40,\n  "(\"SKU002\", \"STORE1\")": 20\n}'></textarea>
-            </div>
-             <!-- Removed Revenue Data Input Section -->
+    <header class="main-header">
+        <div class="brand-container">
+            <img src="Images/Stock&GoLogo.png" alt="Stock & Go Logo" class="header-logo"> 
+            <div class="logo">L'ORÉAL</div>
+            <div class="sub-brand">Stock & Go</div> 
+        </div>
+        <nav class="main-nav">
+            <ul>
+                <li><a href="#">OVERVIEW</a></li>
+                <li><a href="#">MANAGE E&O STOCKS</a></li>
+                <li class="active"><a href="#">NO WASTE ALLOCATION</a></li>
+                <li><a href="#">DASHBOARDS</a></li>
+            </ul>
+        </nav>
+        <div class="user-actions">
+            <button id="theme-toggle" class="theme-toggle" aria-label="Toggle dark mode">
+                <i class="fas fa-moon"></i>
+            </button>
+            <div class="user-profile">
+                <img src="Images/User.png" alt="User Profile" class="user-profile-logo">
             </div>
         </div>
+    </header>
 
-        <div class="param-section">
-            <h2>Optimization Parameters & Auth</h2>
-             <div class="param-input">
-                <label for="jwt-token">JWT Token:</label>
-                <input type="text" id="jwt-token" placeholder="Paste your JWT token here">
+    <main>
+        <!-- Summary View -->
+        <section id="summary-view" class="view-section">
+            <div class="section-header">
+                <h1>Allocation Summary</h1>
+                <span class="status-badge" id="allocation-status">IN PROGRESS</span>
             </div>
-            <div class="param-input">
-                <label for="min-coverage">Default Min Coverage (0.0-1.0):</label>
-                <input type="number" id="min-coverage" step="0.1" min="0" max="1" placeholder="e.g., 0.5">
-            </div>
-            <div class="param-input">
-                <label for="min-skus">Min SKUs per Store:</label>
-                <input type="number" id="min-skus" step="1" min="0" placeholder="e.g., 2">
-            </div>
-            <div class="param-input">
-                <label for="restricted-brands">Restricted Brands for Donation (comma-separated):</label>
-                <input type="text" id="restricted-brands" placeholder="e.g., BrandA,BrandX">
-            </div>
-            <button id="run-button">Run Allocation</button>
-            <div id="status-message"></div>
-        </div>
-    </div>
 
-    <div class="results-section">
-        <h2>Allocation Results</h2>
-        <div id="results-table-container">
-            <!-- Results table will be generated here -->
-            <p>Click "Run Allocation" to see results.</p>
-        </div>
-    </div>
+            <div class="filters-row">
+                <div class="filter-group">
+                    <div class="filter">
+                        <label>DIVISION</label>
+                        <div class="select-wrapper">
+                            <select id="division-filter-summary">
+                                <option value="all">All Divisions</option>
+                                <!-- Divisions will be populated dynamically -->
+                            </select>
+                            <i class="fas fa-chevron-down"></i>
+                        </div>
+                    </div>
+                    <div class="filter">
+                        <label>BRAND</label>
+                        <div class="select-wrapper">
+                            <select id="brand-filter-summary">
+                                <option value="all">All Brands</option>
+                                <!-- Brands will be populated dynamically -->
+                            </select>
+                            <i class="fas fa-chevron-down"></i>
+                        </div>
+                    </div>
+                    <div class="filter">
+                        <label>CATEGORY</label>
+                        <div class="select-wrapper">
+                            <select id="category-filter-summary">
+                                <option value="all">All Categories</option>
+                                <!-- Categories will be populated dynamically -->
+                            </select>
+                            <i class="fas fa-chevron-down"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="metrics-filters">
+                    <div class="metric-toggle">
+                        <span id="unit-toggle" class="active">UNIT</span>
+                        <span id="cog-toggle">COG</span>
+                    </div>
+                    <div class="date-filter">
+                        <span id="current-date">JANUARY 2024</span>
+                        <i class="fas fa-chevron-down"></i>
+                    </div>
+                    <button id="export-excel" class="btn btn-outline btn-sm">
+                        <i class="fas fa-file-excel"></i> Export
+                    </button>
+                </div>
+            </div>
 
+            <div class="summary-metrics">
+                <div class="metric-card">
+                    <div class="metric-value" id="total-units">0</div>
+                    <div class="metric-label">UNITS</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value" id="total-cogs">0</div>
+                    <div class="metric-label">COGS €</div>
+                </div>
+            </div>
+
+            <div class="additional-charts">
+                <div class="chart-row">
+                    <div class="chart-col">
+                        <h3>Stock at Risk by Division</h3>
+                        <div id="division-chart"></div>
+                    </div>
+                    <div class="chart-col">
+                        <h3>Stock at Risk by Brand</h3>
+                        <div id="brand-chart"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <h3>Allocation results</h3> <!-- Added title -->
+                <div id="allocation-chart"></div>
+                <div class="chart-legend" id="allocation-legend">
+                    <!-- Legend will be populated dynamically -->
+                </div>
+            </div>
+
+            <div class="action-buttons">
+                <button id="edit-allocation-btn" class="btn btn-outline">
+                    <i class="fas fa-pen"></i> EDIT ALLOCATION
+                </button>
+                <button id="validate-allocation-btn" class="btn btn-primary">
+                    <i class="fas fa-check-circle"></i> VALIDATE FINAL ALLOCATION
+                </button>
+            </div>
+        </section>
+
+        <!-- Detailed View -->
+        <section id="detailed-view" class="view-section hidden">
+            <div class="back-navigation">
+                <a href="#" id="back-to-summary"><i class="fas fa-arrow-left"></i> Edit allocation</a>
+            </div>
+
+            <div class="allocation-metrics">
+                <div class="metric-box">
+                    <div class="metric-value" id="detail-total-units">0</div>
+                    <div class="metric-label">Units to be allocated</div>
+                </div>
+                <div class="metric-box">
+                    <div class="metric-value" id="detail-total-skus">0</div>
+                    <div class="metric-label">SKUs to be allocated</div>
+                </div>
+            </div>
+
+            <div class="filters-row">
+                <div class="filter-group">
+                    <div class="filter">
+                        <label>DIVISION</label>
+                        <div class="select-wrapper">
+                            <select id="division-filter-detail">
+                                <option value="all">All Divisions</option>
+                                <!-- Divisions will be populated dynamically -->
+                            </select>
+                            <i class="fas fa-chevron-down"></i>
+                        </div>
+                    </div>
+                    <div class="filter">
+                        <label>BRAND</label>
+                        <div class="select-wrapper">
+                            <select id="brand-filter-detail">
+                                <option value="all">All Brands</option>
+                                <!-- Brands will be populated dynamically -->
+                            </select>
+                            <i class="fas fa-chevron-down"></i>
+                        </div>
+                    </div>
+                    <div class="filter">
+                        <label>CATEGORY</label>
+                        <div class="select-wrapper">
+                            <select id="category-filter-detail">
+                                <option value="all">All Categories</option>
+                                <!-- Categories will be populated dynamically -->
+                            </select>
+                            <i class="fas fa-chevron-down"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="action-buttons">
+                    <button id="export-detail-excel" class="btn btn-outline btn-sm">
+                        <i class="fas fa-file-excel"></i> Export
+                    </button>
+                </div>
+            </div>
+
+            <div class="validation-messages">
+                <div id="validation-errors" class="validation-error hidden">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <span id="error-message">Please correct the allocation issues highlighted in red.</span>
+                </div>
+            </div>
+
+            <div class="allocation-table-container">
+                <table id="allocation-table" class="allocation-table">
+                    <thead>
+                        <tr>
+                            <th class="sortable">Div <i class="fas fa-sort"></i></th>
+                            <th class="sortable">Signature <i class="fas fa-sort"></i></th>
+                            <th class="sortable">EAN <i class="fas fa-sort"></i></th>
+                            <th class="sortable">Hierarchy <i class="fas fa-sort"></i></th>
+                            <th class="sortable">Name <i class="fas fa-sort"></i></th>
+                            <th class="sortable">Units <i class="fas fa-sort"></i></th>
+                            <th class="sortable">Stock origin <i class="fas fa-sort"></i></th>
+                            <th class="sortable">Alloc. % <i class="fas fa-sort"></i></th> <!-- Updated header text -->
+                            <th class="sortable">Remaining Qty <i class="fas fa-sort"></i></th> <!-- Added header -->
+                            <!-- Channel columns will be populated dynamically -->
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Table rows will be populated dynamically -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="table-footer">
+                <div class="validation-controls">
+                    <button id="save-allocation" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Save Changes
+                    </button>
+                    <button id="auto-allocate" class="btn btn-outline">
+                        <i class="fas fa-magic"></i> Auto-Allocate
+                    </button>
+                </div>
+                <div class="manual-update">
+                    Manual update <span class="status-indicator"></span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Allocation Tool Form (from original design) -->
+        <section id="allocation-tool-form" class="view-section hidden">
+            <h1>Stock Allocation Tool</h1>
+
+            <div class="container">
+                <div class="input-section">
+                    <h2>Input Data (Sample)</h2>
+                    <div class="data-display">
+                        <h3>Products</h3>
+                        <pre id="products-data"></pre>
+                    </div>
+                    <div class="data-display">
+                        <h3>Channels</h3>
+                        <pre id="channels-data"></pre>
+                    </div>
+                    <div class="data-display">
+                        <h3>Inventory</h3>
+                        <pre id="inventory-data"></pre>
+                    </div>
+                    <div class="data-input">
+                        <h3>Demand Data (JSON)</h3>
+                        <textarea id="demand-data" rows="6" placeholder='e.g., {\n  "(\"SKU001\", \"STORE1\")": 40,\n  "(\"SKU002\", \"STORE1\")": 20\n}'></textarea>
+                    </div>
+                </div>
+
+                <div class="param-section">
+                    <h2>Optimization Parameters & Auth</h2>
+                    <div class="param-input">
+                        <label for="jwt-token">JWT Token:</label>
+                        <input type="text" id="jwt-token" placeholder="Paste your JWT token here">
+                    </div>
+                    <div class="param-input">
+                        <label for="min-coverage">Default Min Coverage (0.0-1.0):</label>
+                        <input type="number" id="min-coverage" step="0.1" min="0" max="1" placeholder="e.g., 0.5">
+                    </div>
+                    <div class="param-input">
+                        <label for="min-skus">Min SKUs per Store:</label>
+                        <input type="number" id="min-skus" step="1" min="0" placeholder="e.g., 2">
+                    </div>
+                    <div class="param-input">
+                        <label for="restricted-brands">Restricted Brands for Donation (comma-separated):</label>
+                        <input type="text" id="restricted-brands" placeholder="e.g., BrandA,BrandX">
+                    </div>
+                    <button id="run-button">Run Allocation</button>
+                    <div id="status-message"></div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/highcharts@10.0.0/highcharts.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

@@ -3,20 +3,89 @@ import pandas as pd
 from schemas import OptimizationParameters, CoverageDaysRule, OutletSKUCapacityRule, OutletAssortmentRule
 from collections import defaultdict
 
+# --- ABC Classification Function ---
+def calculate_abc_classification_and_new_skus(
+    sellout_df: pd.DataFrame, # Raw sellout data
+    product_master_df: pd.DataFrame, # products_df from main scope
+    all_channel_ids: list, # list of all channel IDs
+    sellout_ean_col: str,
+    sellout_channel_col: str,
+    sellout_qty_col: str
+):
+    """
+    Calculates ABC classification per channel based on sellout data.
+    Marks products not in sellout for a channel as 'NEW'.
+    Returns a dictionary: {(product_ean, channel_id): 'A'/'B'/'C'/'NEW'}
+    """
+    product_channel_abc_map = {}
+
+    # Ensure correct dtypes for sellout data
+    sellout_df[sellout_ean_col] = sellout_df[sellout_ean_col].astype(str)
+    sellout_df[sellout_channel_col] = sellout_df[sellout_channel_col].astype(str)
+    sellout_df[sellout_qty_col] = pd.to_numeric(sellout_df[sellout_qty_col], errors='coerce').fillna(0)
+
+    # Aggregate total sales per product per channel over the period in sellout_df
+    channel_product_sales = sellout_df.groupby([sellout_channel_col, sellout_ean_col])[sellout_qty_col].sum().reset_index()
+
+    for channel_id in all_channel_ids:
+        channel_sales = channel_product_sales[channel_product_sales[sellout_channel_col] == channel_id].copy()
+
+        if channel_sales.empty:
+            # If a channel has no sales data at all, all products are 'NEW' for this channel
+            for product_ean in product_master_df.index:
+                product_channel_abc_map[(product_ean, channel_id)] = 'NEW'
+            continue
+
+        channel_sales = channel_sales.sort_values(by=sellout_qty_col, ascending=False)
+        channel_sales['cumulative_sales'] = channel_sales[sellout_qty_col].cumsum()
+        total_channel_sales = channel_sales[sellout_qty_col].sum()
+
+        if total_channel_sales == 0: # Handle channels with products listed but zero sales for all
+            for product_ean in product_master_df.index:
+                if product_ean in channel_sales[sellout_ean_col].values:
+                     product_channel_abc_map[(product_ean, channel_id)] = 'C' # Has entry but 0 sales
+                else:
+                     product_channel_abc_map[(product_ean, channel_id)] = 'NEW'
+            continue
+            
+        channel_sales['cumulative_percent'] = channel_sales['cumulative_sales'] / total_channel_sales
+
+        for _, row in channel_sales.iterrows():
+            ean = row[sellout_ean_col]
+            cum_percent = row['cumulative_percent']
+            if cum_percent <= 0.2:
+                product_channel_abc_map[(ean, channel_id)] = 'A'
+            elif cum_percent <= 0.8:
+                product_channel_abc_map[(ean, channel_id)] = 'B'
+            else:
+                product_channel_abc_map[(ean, channel_id)] = 'C'
+
+        # Mark products in master but not in this channel's sales as 'NEW' for this channel
+        sold_eans_in_channel = set(channel_sales[sellout_ean_col])
+        for product_ean in product_master_df.index:
+            if product_ean not in sold_eans_in_channel:
+                product_channel_abc_map[(product_ean, channel_id)] = 'NEW'
+                
+    return product_channel_abc_map
+
+
 def optimize_allocation(products_df: pd.DataFrame,
                         channels_df: pd.DataFrame,
-                        inventory_df: pd.DataFrame,
+                        inventory_df: pd.DataFrame, # This is the "bad stock" to be allocated
                         demand_dict: dict, # Assumes demand_quantity is WEEKLY demand
-                        parameters: OptimizationParameters):
+                        parameters: OptimizationParameters,
+                        existing_stock_dict: dict, # New: {(ean, channel_id): quantity} for in-store & in-transit
+                        product_channel_abc_map: dict): # New: {(ean, channel_id): 'A'/'B'/'C'/'NEW'}
     """
     Optimizes the allocation of inventory to different channels using Mixed Integer Programming.
 
     Args:
-        products_df: DataFrame containing product information (indexed by SKU, columns: 'brand', 'division', 'axe', 'subaxis', 'metier', 'abc_class', etc.)
-        channels_df: DataFrame containing channel information (indexed by channel ID, columns: 'capacity', 'channel_type', etc.)
-        inventory_df: DataFrame containing inventory information (columns: 'product_sku', 'quantity')
-        demand_dict: Dictionary of WEEKLY demand {(product_sku, channel_id): demand_quantity}
-        parameters: OptimizationParameters object containing control parameters (coverage rules, capacity rules, assortment rules, etc.).
+        products_df: DataFrame containing product information (indexed by EAN/SKU, columns: 'brand', 'division', 'axe', 'subaxis', 'metier', 'abc_class', etc.)
+        channels_df: DataFrame containing channel information (indexed by channel ID string, columns: 'capacity', 'channel_type', etc.)
+        inventory_df: DataFrame containing inventory information (columns: 'product_ean', 'quantity') for stock to be allocated.
+        demand_dict: Dictionary of WEEKLY demand {(product_ean, channel_id): demand_quantity}
+        parameters: OptimizationParameters object containing control parameters.
+        existing_stock_dict: Dictionary {(product_ean, channel_id): quantity} representing current in-store and in-transit stock.
 
     Returns:
         Tuple: (model, status, list_of_allocation_decisions)
@@ -33,8 +102,8 @@ def optimize_allocation(products_df: pd.DataFrame,
     products = products_df.index.tolist() # List of SKUs
     channels = channels_df.index.tolist() # List of Channel IDs
 
-    # Aggregate inventory by product SKU
-    inventory_quantity = inventory_df.groupby('product_sku')['quantity'].sum().to_dict()
+    # Aggregate inventory by product EAN
+    inventory_quantity = inventory_df.groupby('product_ean')['quantity'].sum().to_dict() # Use 'product_ean'
 
     # Process parameter rules into efficient lookup dictionaries
     coverage_rules_dict = {(rule.channel_id, rule.abc_class): rule.coverage_days for rule in parameters.coverage_days_rules}
@@ -126,26 +195,56 @@ def optimize_allocation(products_df: pd.DataFrame,
 
 
     # 3. Maximum Coverage (in Days) Constraints: Allocation <= Daily_Demand * Coverage_Days
+    #    Also handles PushNewSKU logic implicitly if abc_class is 'NEW' and a rule exists for it.
+    push_new_sku_lookup = {(rule.division, rule.subaxis): rule.push_quantity for rule in parameters.push_new_sku_rules}
+
     for c in channels:
         for p in products:
-            abc_class = products_df.loc[p].get('abc_class')
-            # Find the coverage days rule for this specific channel and product class
-            coverage_days = coverage_rules_dict.get((c, abc_class))
+            # Get dynamically calculated ABC class for this product-channel pair
+            abc_class = product_channel_abc_map.get((p, c), 'C') # Default to 'C' if not found
 
-            if coverage_days is not None and coverage_days >= 0: # Apply if rule exists
-                weekly_demand_qty = demand_dict.get((p, c), 0)
-                if weekly_demand_qty > 0:
-                    daily_demand = weekly_demand_qty / 7.0
-                    max_allowed_allocation = daily_demand * coverage_days
-                    model += x[p, c] <= max_allowed_allocation, f"Max_Coverage_Days_{p}_{c}"
-                else:
-                    # If weekly demand is 0, max coverage implies allocation should be 0
-                    model += x[p, c] <= 0, f"Max_Coverage_Days_Zero_Demand_{p}_{c}"
-            # else: Handle cases where abc_class is missing or no rule exists (currently no constraint applied)
+            # Apply seasonality to weekly demand
+            base_weekly_demand_qty = demand_dict.get((p, c), 0)
+            adjusted_weekly_demand_qty = base_weekly_demand_qty * parameters.seasonality_coefficient
+            
+            current_stock_for_pc = existing_stock_dict.get((p,c), 0)
 
+            if abc_class == 'NEW':
+                product_division = products_df.loc[p].get('division')
+                product_subaxis = products_df.loc[p].get('subaxis')
+                push_quantity = 0
+                if product_division and product_subaxis:
+                    push_quantity = push_new_sku_lookup.get((product_division, product_subaxis), 0)
+                
+                # For NEW SKUs, the allocation should be at least the push quantity,
+                # respecting supply. Coverage days constraint might not apply or be very high.
+                # Here, we set x[p,c] to be at most the push_quantity if it's a NEW SKU.
+                # If demand also exists (e.g. from a forecast for new items), this logic might need refinement.
+                # For now, if NEW, it's driven by push quantity, not coverage of demand.
+                # This also means if push_quantity is 0, allocation is 0.
+                # The allocation x[p,c] is also limited by supply (Constraint 1)
+                # and channel capacity (Constraint 2)
+                model += x[p, c] <= push_quantity, f"Push_New_SKU_{p}_{c}"
+                # We might also want a minimum push: model += x[p,c] >= push_quantity if supply allows.
+                # For now, let's assume x[p,c] is simply capped by push_quantity for NEW.
+                # If push_quantity is 0 for a NEW SKU (no rule), it can't be allocated via this logic.
+            else:
+                # Existing logic for A, B, C classes based on coverage days
+                coverage_days = coverage_rules_dict.get((c, abc_class))
+                if coverage_days is not None and coverage_days >= 0: # Apply if rule exists
+                    if adjusted_weekly_demand_qty > 0:
+                        daily_demand = adjusted_weekly_demand_qty / 7.0
+                        max_total_stock_allowed = daily_demand * coverage_days
+                        allowable_new_allocation = max(0, max_total_stock_allowed - current_stock_for_pc)
+                        model += x[p, c] <= allowable_new_allocation, f"Max_Coverage_Days_{p}_{c}"
+                    else:
+                        # If adjusted weekly demand is 0, new allocation must be 0 for A,B,C.
+                        model += x[p, c] <= 0, f"Max_Coverage_Days_Zero_Demand_{p}_{c}"
+                # else: No coverage rule for this ABC/channel combo, no coverage constraint applied.
 
     # 4. Donation Eligibility Constraints (Brand-Level Only):
-    donation_channels = channels_df[channels_df['channel_type'] == 'donation'].index.tolist()
+    # Correctly filter based on the 'channel_type' column before accessing the index
+    donation_channels = channels_df.loc[channels_df['channel_type'] == 'donation'].index.tolist()
     if parameters.restricted_brands_for_donation and donation_channels:
         restricted_brands = set(parameters.restricted_brands_for_donation) # These are 'brand'/'signature' names
         for p in products:
@@ -207,85 +306,402 @@ def optimize_allocation(products_df: pd.DataFrame,
     # Return the model object along with status and results
     return model, status_string, allocation_results
 
+# --- Helper Functions for Data Loading ---
+
+def load_product_data(file_path, ean_col='EAN', brand_col='Brand', division_col='Division',
+                      axe_col='Axe', subaxis_col='SubAxis', metier_col='Metier', abc_class_col=None): # abc_class_col is now optional
+    """Loads product data from a CSV file."""
+    df = pd.read_csv(file_path)
+    # Rename columns to match expected names in products_df for the solver
+    rename_map = {
+        ean_col: 'ean', # This will be the index
+        brand_col: 'brand',
+        division_col: 'division',
+        axe_col: 'axe',
+        subaxis_col: 'subaxis',
+        metier_col: 'metier',
+    }
+    # Add abc_class to rename_map only if abc_class_col is provided and exists
+    if abc_class_col and abc_class_col in df.columns:
+        rename_map[abc_class_col] = 'abc_class'
+    
+    # Keep only columns that exist in the CSV and are in our rename_map keys
+    columns_to_select = [k for k in rename_map.keys() if k in df.columns]
+    if not columns_to_select:
+        raise ValueError(f"None of the specified product attribute columns found in {file_path}")
+
+    products_df = df[columns_to_select].rename(columns=rename_map)
+
+    if 'ean' not in products_df.columns: # Check for 'ean' after renaming
+        raise ValueError(f"EAN column '{ean_col}' (expected to be renamed to 'ean') not found in product data from {file_path}.")
+    products_df = products_df.set_index('ean')
+    products_df.index = products_df.index.astype(str)
+    return products_df
+
+def load_channel_data(file_path, sheet_name='Channels', id_col='ChannelID', type_col='ChannelType', capacity_col='Capacity'):
+    """Loads channel data from an Excel file sheet."""
+    df = pd.read_excel(file_path, sheet_name=sheet_name)
+    rename_map = {
+        id_col: 'id', # This will be the index
+        type_col: 'channel_type',
+        capacity_col: 'capacity'
+    }
+    actual_rename_map = {k: v for k, v in rename_map.items() if k in df.columns}
+    channels_df = df[[k for k in actual_rename_map.keys()]].rename(columns=actual_rename_map)
+
+    if 'id' not in channels_df.columns:
+        raise ValueError(f"Channel ID column '{id_col}' not found or not mapped to 'id' in channel data.")
+    channels_df = channels_df.set_index('id')
+    channels_df.index = channels_df.index.astype(str)
+    # Ensure capacity is numeric, fillna for outlets if capacity is not applicable or 0
+    if 'capacity' in channels_df.columns:
+        channels_df['capacity'] = pd.to_numeric(channels_df['capacity'], errors='coerce').fillna(0)
+    else: # if capacity column is missing, create it with 0
+        channels_df['capacity'] = 0
+
+    if 'channel_type' not in channels_df.columns:
+         raise ValueError(f"Channel Type column '{type_col}' not found or not mapped to 'channel_type' in channel data.")
+    return channels_df
+
+def load_inventory_data(file_path, ean_col='ean_code', qty_col='StockToAllocate'):
+    """Loads inventory data (bad stock to allocate) from a CSV file."""
+    df = pd.read_csv(file_path)
+    if ean_col not in df.columns or qty_col not in df.columns:
+        raise ValueError(f"Required columns ('{ean_col}', '{qty_col}') not found in inventory file {file_path}")
+    inventory_df = df[[ean_col, qty_col]].rename(columns={ean_col: 'product_ean', qty_col: 'quantity'})
+    inventory_df['product_ean'] = inventory_df['product_ean'].astype(str)
+    inventory_df['quantity'] = pd.to_numeric(inventory_df['quantity'], errors='coerce').fillna(0)
+    # Sum quantities for the same EAN, as bad_stock_inventory might have multiple lines per EAN (e.g. different plants)
+    inventory_df = inventory_df.groupby('product_ean', as_index=False)['quantity'].sum()
+    return inventory_df
+
+def load_existing_stock_data(instore_file_path, intransit_file_path,
+                             instore_ean_col='barcode', instore_channel_col='store_code', instore_qty_col='physical_quantity',
+                             intransit_ean_col='ean_material_code', intransit_channel_col='store_code', intransit_qty_col='order_quantity'):
+    """Loads and combines in-store and in-transit inventory into a dictionary {(ean, channel_id): quantity}."""
+    existing_stock = defaultdict(float)
+
+    # Load in-store inventory
+    df_instore = pd.read_csv(instore_file_path)
+    if not all(col in df_instore.columns for col in [instore_ean_col, instore_channel_col, instore_qty_col]):
+        raise ValueError(f"Required columns not found in in-store inventory file {instore_file_path}")
+    df_instore = df_instore[[instore_ean_col, instore_channel_col, instore_qty_col]].rename(columns={
+        instore_ean_col: 'ean', instore_channel_col: 'channel_id', instore_qty_col: 'quantity'
+    })
+    df_instore['ean'] = df_instore['ean'].astype(str)
+    df_instore['channel_id'] = df_instore['channel_id'].astype(str)
+    df_instore['quantity'] = pd.to_numeric(df_instore['quantity'], errors='coerce').fillna(0)
+    for _, row in df_instore.iterrows():
+        existing_stock[(row['ean'], row['channel_id'])] += row['quantity']
+
+    # Load in-transit inventory
+    df_intransit = pd.read_csv(intransit_file_path)
+    if not all(col in df_intransit.columns for col in [intransit_ean_col, intransit_channel_col, intransit_qty_col]):
+        raise ValueError(f"Required columns not found in in-transit inventory file {intransit_file_path}")
+    df_intransit = df_intransit[[intransit_ean_col, intransit_channel_col, intransit_qty_col]].rename(columns={
+        intransit_ean_col: 'ean', intransit_channel_col: 'channel_id', intransit_qty_col: 'quantity'
+    })
+    df_intransit['ean'] = df_intransit['ean'].astype(str)
+    df_intransit['channel_id'] = df_intransit['channel_id'].astype(str)
+    df_intransit['quantity'] = pd.to_numeric(df_intransit['quantity'], errors='coerce').fillna(0)
+    for _, row in df_intransit.iterrows():
+        existing_stock[(row['ean'], row['channel_id'])] += row['quantity']
+
+    return dict(existing_stock)
+
+def load_demand_data(file_path, ean_col='EAN', channel_col='ChannelID', demand_col='WeeklySalesQty'):
+    """Loads demand data from a CSV file into a dictionary {(ean, channel_id): quantity}."""
+    df = pd.read_csv(file_path)
+    if not all(col in df.columns for col in [ean_col, channel_col, demand_col]):
+        raise ValueError(f"Required columns not found in demand file {file_path}")
+    
+    demand_dict = {}
+    df[ean_col] = df[ean_col].astype(str)
+    df[channel_col] = df[channel_col].astype(str)
+    df[demand_col] = pd.to_numeric(df[demand_col], errors='coerce').fillna(0)
+
+    # Group by EAN and ChannelID, summing demand if there are duplicates
+    grouped_demand = df.groupby([ean_col, channel_col])[demand_col].sum().reset_index()
+
+    for _, row in grouped_demand.iterrows():
+        demand_dict[(row[ean_col], row[channel_col])] = row[demand_col]
+    return demand_dict
+
+# Functions to load parameter rules from Excel
+def load_coverage_rules_from_excel(file_path, sheet_name='Sheet1',
+                                   channel_col='Channel', abc_col='ABC Class', coverage_col='Coverage (in days)'):
+    df = pd.read_excel(file_path, sheet_name=sheet_name)
+    df.columns = df.columns.map(lambda x: str(x).strip().strip('"')) # Ensure string, strip whitespace and quotes
+    rules = []
+
+    # Use the sanitized column names for checking and access
+    s_channel_col = channel_col.strip().strip('"')
+    s_abc_col = abc_col.strip().strip('"')
+    s_coverage_col = coverage_col.strip().strip('"')
+
+    if not all(col in df.columns for col in [s_channel_col, s_abc_col, s_coverage_col]):
+        raise ValueError(f"Required columns for coverage rules ('{s_channel_col}', '{s_abc_col}', '{s_coverage_col}') not found in {file_path} sheet {sheet_name}. Found: {df.columns.tolist()}")
+    for _, row in df.iterrows():
+        rules.append(CoverageDaysRule(
+            channel_id=str(row[s_channel_col]),
+            abc_class=str(row[s_abc_col]),
+            coverage_days=int(row[s_coverage_col])
+        ))
+    return rules
+
+def load_outlet_sku_capacity_rules_from_excel(file_path, sheet_name='Sheet1',
+                                              channel_col='Channel', div_axe_col='operational_division_operational_axe_label',
+                                              max_skus_col='Max capacity (in # of SKU)', delimiter=';'):
+    try:
+        df = pd.read_excel(file_path, sheet_name=sheet_name)
+    except ValueError: # Sheet might not exist
+        print(f"Warning: Sheet '{sheet_name}' not found in '{file_path}'. No outlet SKU capacity rules loaded from this sheet.")
+        return []
+    df.columns = df.columns.map(lambda x: str(x).strip().strip('"'))
+
+    s_channel_col = channel_col.strip().strip('"')
+    s_div_axe_col = div_axe_col.strip().strip('"')
+    s_max_skus_col = max_skus_col.strip().strip('"')
+
+    if not all(col in df.columns for col in [s_channel_col, s_div_axe_col, s_max_skus_col]):
+        print(f"Warning: Required columns for outlet SKU capacity rules ('{s_channel_col}', '{s_div_axe_col}', '{s_max_skus_col}') not found in {file_path} sheet {sheet_name}. Found: {df.columns.tolist()}. Skipping these rules.")
+        return []
+        
+    rules = []
+    for _, row in df.iterrows():
+        try:
+            div_axe_combined = str(row[s_div_axe_col])
+            div_axe_split = div_axe_combined.split(delimiter)
+            if len(div_axe_split) == 2:
+                division, axe = div_axe_split[0].strip(), div_axe_split[1].strip()
+                rules.append(OutletSKUCapacityRule(
+                    channel_id=str(row[s_channel_col]),
+                    division=division,
+                    axe=axe,
+                    max_skus=int(row[s_max_skus_col])
+                ))
+            else:
+                print(f"Warning: Could not split '{div_axe_combined}' from column '{s_div_axe_col}' into division and axe for row: {row}. Expected 2 parts, got {len(div_axe_split)}. Skipping.")
+        except Exception as e:
+            print(f"Error processing row in outlet SKU capacity: {row}. Error: {e}. Skipping.")
+    return rules
+
+def load_outlet_assortment_rules_from_excel(file_path, sheet_name='Sheet1',
+                                            metier_col='operational_metier_label', subaxis_col='operational_sub_axe_label',
+                                            brand_col='operational_signature_label', max_skus_col='# of SKUs to have in outlet (assortment)'):
+    df = pd.read_excel(file_path, sheet_name=sheet_name)
+    df.columns = df.columns.map(lambda x: str(x).strip().strip('"'))
+    rules = []
+
+    s_metier_col = metier_col.strip().strip('"')
+    s_subaxis_col = subaxis_col.strip().strip('"')
+    s_brand_col = brand_col.strip().strip('"')
+    s_max_skus_col = max_skus_col.strip().strip('"')
+    
+    if not all(col in df.columns for col in [s_metier_col, s_subaxis_col, s_brand_col, s_max_skus_col]):
+        raise ValueError(f"Required columns for outlet assortment rules ('{s_metier_col}', '{s_subaxis_col}', '{s_brand_col}', '{s_max_skus_col}') not found in {file_path} sheet {sheet_name}. Found: {df.columns.tolist()}")
+        
+    for _, row in df.iterrows():
+        rules.append(OutletAssortmentRule(
+            metier=str(row[s_metier_col]),
+            subaxis=str(row[s_subaxis_col]),
+            brand=str(row[s_brand_col]),
+            max_skus=int(row[s_max_skus_col])
+        ))
+    return rules
+
+def load_push_new_sku_rules_from_excel(file_path, sheet_name='Sheet1',
+                                       division_col='operational_divison', # Typo "divison" as per user's feedback
+                                       subaxis_col='operational_sub_axe_label',
+                                       push_qty_col='Push Quantity if New SKU'):
+    df = pd.read_excel(file_path, sheet_name=sheet_name)
+    df.columns = df.columns.map(lambda x: str(x).strip().strip('"'))
+    rules = []
+
+    s_division_col = division_col.strip().strip('"')
+    s_subaxis_col = subaxis_col.strip().strip('"')
+    s_push_qty_col = push_qty_col.strip().strip('"')
+
+    if not all(col in df.columns for col in [s_division_col, s_subaxis_col, s_push_qty_col]):
+        raise ValueError(f"Required columns for push new SKU rules ('{s_division_col}', '{s_subaxis_col}', '{s_push_qty_col}') not found in {file_path} sheet {sheet_name}. Found: {df.columns.tolist()}")
+
+    for _, row in df.iterrows():
+        rules.append(PushNewSKURule(
+            division=str(row[s_division_col]),
+            subaxis=str(row[s_subaxis_col]),
+            push_quantity=int(row[s_push_qty_col])
+        ))
+    return rules
+
+
     # --- Example Usage (for testing purposes) ---
 if __name__ == '__main__':
-    # Create sample data matching the expected DataFrame/dict structures
-    # --- Sample Products ---
-    sample_products_data = {
-        'sku': ['SKU001', 'SKU002', 'SKU003', 'SKU004', 'SKU005'],
-        'donation_eligible': [True, False, True, True, True], # Still present but not used in constraints
-        'brand': ['BrandA', 'BrandA', 'BrandB', 'BrandC', 'BrandA'], # Signature
-        'division': ['LLD', 'LLD', 'CPD', 'PPD', 'LLD'],
-        'axe': ['Fragrance', 'Fragrance', 'Skincare', 'Makeup', 'Fragrance'],
-        'subaxis': ['Men Fragrance', 'Women Fragrance', 'Face Care', 'Lip Makeup', 'Men Fragrance'],
-        'metier': ['Eau de Toilette', 'Eau de Parfum', 'Moisturizer', 'Lipstick', 'After Shave'],
-        'abc_class': ['A', 'B', 'A', 'C', 'B']
-    }
-    sample_products = pd.DataFrame(sample_products_data).set_index('sku')
+    # Define file paths (relative to project root)
+    # Assuming CWD is the project root 'nw_allocation_tool'
+    data_path = 'data'
+    product_master_file = f'{data_path}/InputData/masterdata.csv'
+    bad_stock_file = f'{data_path}/InputData/bad_stock_inventory.csv'
+    in_store_inventory_file = f'{data_path}/InputData/in_store_inventory.csv'
+    stock_in_transit_file = f'{data_path}/InputData/stock_in_transit.csv'
+    sellout_file = f'{data_path}/InputData/sellout.csv'
 
-    # --- Sample Channels ---
-    sample_channels_data = {
-        'id': ['STORE1', 'OUTLET1', 'DONATE1', 'STORE2', 'OUTLET2'],
-        'capacity': [100, 0, 50, 80, 0], # Capacity only used for non-outlets now
-        # 'max_coverage' removed
-        'channel_type': ['store', 'outlet', 'donation', 'store', 'outlet']
-    }
-    sample_channels = pd.DataFrame(sample_channels_data).set_index('id')
+    # Parameters files
+    excel_params_path = f'{data_path}/ExcelParameters'
+    capacity_channel_file = f'{excel_params_path}/CapacityPerChannel.xlsx'
+    coverage_rules_file = f'{excel_params_path}/CoverageperABCperChannel.xlsx'
+    assortment_rules_file = f'{excel_params_path}/AssortmentperSubaxeperSignature.xlsx'
+    push_new_sku_file = f'{excel_params_path}/PushNewSKU.xlsx'
 
-    # --- Sample Inventory ---
-    sample_inventory_data = {
-        'product_sku': ['SKU001', 'SKU002', 'SKU003', 'SKU004', 'SKU005', 'SKU001'],
-        'quantity': [50, 30, 40, 60, 25, 20] # SKU001 has 70 total
-    }
-    sample_inventory = pd.DataFrame(sample_inventory_data)
+    try:
+        # --- Load Data ---
+        print("Loading product data...")
+        # Using column names provided by the user
+        products_df = load_product_data(
+            product_master_file,
+            ean_col='product_gtin',
+            brand_col='operational_signature_label',
+            division_col='operational_division',
+            axe_col='operational_axe_label',
+            subaxis_col='operational_sub_axe_label',
+            metier_col='operational_metier_label',
+            abc_class_col=None # Explicitly None if not in masterdata.csv, or provide column name if it is
+        )
+        print(f"Loaded {len(products_df)} products.")
 
-    # --- Sample Demand (Weekly) ---
-    sample_demand = {
-        ('SKU001', 'STORE1'): 14, # 2 per day
-        ('SKU002', 'STORE1'): 7,  # 1 per day
-        ('SKU003', 'OUTLET1'): 21, # 3 per day
-        ('SKU001', 'STORE2'): 7,  # 1 per day
-        ('SKU004', 'STORE2'): 14, # 2 per day
-        ('SKU005', 'OUTLET1'): 7, # 1 per day
-        ('SKU001', 'OUTLET2'): 28, # 4 per day
-    }
+        print("Loading channel data...")
+        # Assuming 'Channels' sheet for master, 'OutletSKUCapacity' for specific rules in CapacityPerChannel.xlsx
+        # User did not provide column names for this, keeping previous assumptions for general channel master.
+        # Specific rules from this file (OutletSKUCapacity) are handled below with user-provided names.
+        channels_df = load_channel_data(capacity_channel_file, sheet_name='Channels', # Assuming a 'Channels' sheet for master list
+                                        id_col='ChannelID', type_col='ChannelType', capacity_col='CapacityQty') 
+        print(f"Loaded {len(channels_df)} channels from '{capacity_channel_file}' sheet 'Channels'.")
 
-    # --- Sample Parameter Rules ---
-    sample_coverage_rules = [
-        CoverageDaysRule(channel_id='STORE1', abc_class='A', coverage_days=14),
-        CoverageDaysRule(channel_id='STORE1', abc_class='B', coverage_days=21),
-        CoverageDaysRule(channel_id='OUTLET1', abc_class='A', coverage_days=28),
-        CoverageDaysRule(channel_id='OUTLET1', abc_class='B', coverage_days=21),
-        CoverageDaysRule(channel_id='OUTLET2', abc_class='A', coverage_days=35),
-        # Add more rules as needed...
-    ]
-    sample_outlet_capacity = [
-        OutletSKUCapacityRule(channel_id='OUTLET1', division='LLD', axe='Fragrance', max_skus=2), # Outlet1 can have max 2 LLD Fragrance SKUs
-        OutletSKUCapacityRule(channel_id='OUTLET1', division='CPD', axe='Skincare', max_skus=1),
-        OutletSKUCapacityRule(channel_id='OUTLET2', division='LLD', axe='Fragrance', max_skus=1),
-    ]
-    sample_outlet_assortment = [
-        OutletAssortmentRule(metier='Eau de Toilette', subaxis='Men Fragrance', brand='BrandA', max_skus=1), # Max 1 SKU001 across all outlets
-        OutletAssortmentRule(metier='Lipstick', subaxis='Lip Makeup', brand='BrandC', max_skus=1),
-    ]
+        print("Loading bad stock inventory...")
+        inventory_df = load_inventory_data(bad_stock_file, ean_col='ean_code', qty_col='StockToAllocate')
+        print(f"Loaded {inventory_df['quantity'].sum()} units of bad stock for {len(inventory_df)} EANs.")
 
-    # --- Test Case 1: Run with new rules ---
-    print("--- Test Case 1: Basic Run with New Rules ---")
-    params1 = OptimizationParameters(
-        restricted_brands_for_donation=['BrandB'], # Example restriction
-        coverage_days_rules=sample_coverage_rules,
-        outlet_sku_capacity_rules=sample_outlet_capacity,
-        outlet_assortment_rules=sample_outlet_assortment
-    )
-    model1, status1, results1 = optimize_allocation(sample_products, sample_channels, sample_inventory, sample_demand, params1)
-    print(f"Status: {status1}")
-    if status1 == 'Optimal':
-        print("Allocation Results:")
-        results_df = pd.DataFrame(results1)
-        if not results_df.empty:
-            print(results_df.to_string())
+        print("Loading existing in-store and in-transit stock...")
+        existing_stock_dict = load_existing_stock_data(
+            in_store_inventory_file, stock_in_transit_file,
+            instore_ean_col='barcode', instore_channel_col='store_code', instore_qty_col='physical_quantity',
+            intransit_ean_col='ean_material_code', intransit_channel_col='store_code', intransit_qty_col='order_quantity'
+        )
+        print(f"Loaded existing stock for {len(existing_stock_dict)} product-channel combinations.")
+
+        print("Loading demand data...")
+        demand_dict = load_demand_data(
+            sellout_file,
+            ean_col='barcode', # As per user: sellout.csv uses 'barcode' for EAN
+            channel_col='store_code',
+            demand_col='total_items_weekly'
+        )
+        print(f"Loaded demand for {len(demand_dict)} product-channel combinations.")
+
+        # --- Load Parameter Rules ---
+        print("Loading parameter rules...")
+        # Using column names provided by the user for Excel parameter files
+        coverage_rules = load_coverage_rules_from_excel(
+            coverage_rules_file, sheet_name='Sheet1', 
+            channel_col='Channel', abc_col='ABC Class', coverage_col='Coverage (in days)'
+        )
+        print(f"Loaded {len(coverage_rules)} coverage rules.")
+        
+        outlet_sku_capacity_rules = load_outlet_sku_capacity_rules_from_excel(
+            capacity_channel_file, sheet_name='Sheet1', # Assuming rules are in 'Sheet1'
+            channel_col='Channel', div_axe_col='operational_division_operational_axe_label',
+            max_skus_col='Max capacity (in # of SKU)'
+        )
+        print(f"Loaded {len(outlet_sku_capacity_rules)} outlet SKU capacity rules.")
+        
+        assortment_rules = load_outlet_assortment_rules_from_excel(
+            assortment_rules_file, sheet_name='Sheet1', 
+            metier_col='operational_metier_label', subaxis_col='operational_sub_axe_label',
+            brand_col='operational_signature_label', max_skus_col='# of SKUs to have in outlet (assortment)'
+        )
+        print(f"Loaded {len(assortment_rules)} outlet assortment rules.")
+
+        push_new_sku_rules = load_push_new_sku_rules_from_excel(
+            push_new_sku_file, sheet_name='Sheet1', 
+            division_col='operational_divison', 
+            subaxis_col='operational_sub_axe_label',
+            push_qty_col='Push Quantity if New SKU'
+        )
+        print(f"Loaded {len(push_new_sku_rules)} push new SKU rules.")
+
+        # Calculate ABC Classification
+        print("Calculating ABC classification...")
+        # Load raw sellout data for ABC calculation
+        raw_sellout_df = pd.read_csv(sellout_file) 
+        product_channel_abc_map = calculate_abc_classification_and_new_skus(
+            raw_sellout_df,
+            products_df, # Already loaded product master
+            channels_df.index.tolist(), # All channel IDs
+            sellout_ean_col='barcode', 
+            sellout_channel_col='store_code', 
+            sellout_qty_col='total_items_weekly'
+        )
+        print(f"Calculated ABC & NEW status for {len(product_channel_abc_map)} product-channel pairs.")
+        # For inspection, you might want to add a step here to merge this ABC class back to products_df
+        # or print some of the classifications.
+
+        # Restricted brands for donation (example, replace with actual loading if available from a file or UI)
+        restricted_brands_for_donation = [] 
+
+        # Seasonality coefficient - get from user input for testing
+        try:
+            seasonality_input = input("Enter seasonality coefficient (e.g., 1.0 for no change, 1.2 for +20%): ")
+            seasonality_coefficient = float(seasonality_input)
+            if seasonality_coefficient < 0:
+                print("Seasonality coefficient cannot be negative. Using 1.0.")
+                seasonality_coefficient = 1.0
+        except ValueError:
+            print("Invalid input for seasonality. Using 1.0.")
+            seasonality_coefficient = 1.0
+        print(f"Using seasonality coefficient: {seasonality_coefficient}")
+
+
+        params = OptimizationParameters(
+            seasonality_coefficient=seasonality_coefficient, # Now included
+            restricted_brands_for_donation=restricted_brands_for_donation, # Example
+            coverage_days_rules=coverage_rules,
+            outlet_sku_capacity_rules=outlet_sku_capacity_rules,
+            outlet_assortment_rules=assortment_rules,
+            push_new_sku_rules=push_new_sku_rules
+        )
+        print("Parameters loaded and OptimizationParameters model instantiated.")
+
+        # --- Run Optimization ---
+        print("\n--- Running Optimization with Loaded Data ---")
+        model, status, results = optimize_allocation(
+            products_df,
+            channels_df,
+            inventory_df, 
+            demand_dict,
+            params, # Contains seasonality_coefficient and push_new_sku_rules
+            existing_stock_dict,
+            product_channel_abc_map # Pass the new map
+        )
+        
+        print(f"\nSolver Status: {status}")
+        if status == 'Optimal':
+            print("Allocation Results:")
+            results_df = pd.DataFrame(results)
+            if not results_df.empty:
+                # To ensure product_sku is string for display if it's not already
+                if 'product_sku' in results_df.columns:
+                    results_df['product_sku'] = results_df['product_sku'].astype(str)
+                if 'channel_id' in results_df.columns:
+                    results_df['channel_id'] = results_df['channel_id'].astype(str)
+                print(results_df.to_string())
+            else:
+                print("No allocation.")
         else:
-            print("No allocation.")
-    # print(f"Model: {model1}") # Optional: print model summary if needed
+            print("Optimization was not optimal. Check logs and model formulation (allocation_model.lp).")
+            print("Consider reviewing constraints and data, especially if 'infeasible' or 'unbounded'.")
 
-    # Add more test cases if needed to verify specific constraints
+    except FileNotFoundError as e:
+        print(f"Error: File not found. {e}")
+    except ValueError as e:
+        print(f"Error: Data loading or validation issue. {e}")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
