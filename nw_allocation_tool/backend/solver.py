@@ -284,6 +284,10 @@ def load_channel_data_from_channellist(file_path, sheet_name='Feuil1', channel_i
     try:
         df = pd.read_excel(file_path, sheet_name=sheet_name)
         logger.debug(f"Successfully read Excel: {file_path}, Sheet: {sheet_name}")
+        
+        # Normalize column names immediately after reading
+        df.columns = [str(col).strip().strip('"') for col in df.columns]
+
     except FileNotFoundError:
         logger.error(f"Channel list file not found: {file_path}")
         raise
