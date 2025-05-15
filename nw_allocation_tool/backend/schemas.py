@@ -50,11 +50,20 @@ class OutletAssortmentRule(BaseModel):
     brand: constr(min_length=1) # Renamed from signature for consistency
     max_skus: conint(ge=0)
 
+class PushNewSKURule(BaseModel):
+    division: constr(min_length=1)
+    subaxis: constr(min_length=1) # Matches 'operational_sub_axe_label'
+    push_quantity: conint(ge=0)
+
 
 # --- Optimization Parameters ---
 
 class OptimizationParameters(BaseModel):
     """Parameters to control the optimization algorithm's behavior."""
+    seasonality_coefficient: confloat(ge=0) = Field(
+        1.0, 
+        description="Coefficient to adjust weekly demand for seasonality."
+    )
     # default_max_coverage removed
     # max_skus_per_store removed
     restricted_brands_for_donation: Optional[List[constr(min_length=1)]] = Field(
@@ -72,6 +81,10 @@ class OptimizationParameters(BaseModel):
     outlet_assortment_rules: List[OutletAssortmentRule] = Field(
         default_factory=list,
         description="List of rules defining maximum SKU assortment for outlets based on metier, subaxis, and brand (signature)."
+    )
+    push_new_sku_rules: List[PushNewSKURule] = Field(
+        default_factory=list,
+        description="List of rules defining push quantities for new SKUs based on division and sub-axis."
     )
     # Add other parameters as needed, e.g., max_stock_limit_override, etc.
 
