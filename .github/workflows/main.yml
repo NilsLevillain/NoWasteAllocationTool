@@ -1,0 +1,5 @@
+uses: kevinobee/ai-digest
+with:
+  input_path: './docs'
+  output_file: 'docs.md'
+  digest_log: 'ai-digest-log.md'
