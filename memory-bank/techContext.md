@@ -24,7 +24,7 @@
       - **CI/CD**: GitHub Actions
       - **Containerization**: Docker
       - **IDE**: VS Code with Python and Flask extensions
-      - **Testing**: pytest, Jest
+      - **Testing**: unittest (for backend utilities), pytest, Jest
       - **Code Quality**: flake8, ESLint, Black
       
 ## Technical Constraints

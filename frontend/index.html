@@ -72,6 +72,16 @@
                             <i class="fas fa-chevron-down"></i>
                         </div>
                     </div>
+                    <div class="filter">
+                        <label>PLANT</label>
+                        <div class="select-wrapper">
+                            <select id="plant-filter-summary">
+                                <option value="all">All Plants</option>
+                                <!-- Plants will be populated dynamically -->
+                            </select>
+                            <i class="fas fa-chevron-down"></i>
+                        </div>
+                    </div>
                 </div>
                 <div class="metrics-filters">
                     <div class="metric-toggle">
@@ -179,6 +189,16 @@
                             <i class="fas fa-chevron-down"></i>
                         </div>
                     </div>
+                    <div class="filter">
+                        <label>PLANT</label>
+                        <div class="select-wrapper">
+                            <select id="plant-filter-detail">
+                                <option value="all">All Plants</option>
+                                <!-- Plants will be populated dynamically -->
+                            </select>
+                            <i class="fas fa-chevron-down"></i>
+                        </div>
+                    </div>
                 </div>
                 <div class="action-buttons">
                     <button id="export-detail-excel" class="btn btn-outline btn-sm">
@@ -200,11 +220,16 @@
                         <tr>
                             <th class="sortable">Div <i class="fas fa-sort"></i></th>
                             <th class="sortable">Signature <i class="fas fa-sort"></i></th>
+                            <th class="sortable">Axe <i class="fas fa-sort"></i></th>
+                            <th class="sortable">SubAxe <i class="fas fa-sort"></i></th>
+                            <th class="sortable">Metier <i class="fas fa-sort"></i></th>
                             <th class="sortable">EAN <i class="fas fa-sort"></i></th>
-                            <th class="sortable">Hierarchy <i class="fas fa-sort"></i></th>
-                            <th class="sortable">Name <i class="fas fa-sort"></i></th>
+                            <th class="sortable">SKU <i class="fas fa-sort"></i></th>
+                            <th class="sortable">Description <i class="fas fa-sort"></i></th>
                             <th class="sortable">Units <i class="fas fa-sort"></i></th>
                             <th class="sortable">Stock origin <i class="fas fa-sort"></i></th>
+                            <th class="sortable">FlagExcess6months <i class="fas fa-sort"></i></th>
+                            <th class="sortable">FlagExcess12months <i class="fas fa-sort"></i></th>
                             <th class="sortable">Alloc. % <i class="fas fa-sort"></i></th> <!-- Updated header text -->
                             <th class="sortable">Remaining Qty <i class="fas fa-sort"></i></th> <!-- Added header -->
                             <!-- Channel columns will be populated dynamically -->

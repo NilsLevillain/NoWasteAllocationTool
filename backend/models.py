@@ -23,6 +23,7 @@ class Product(db.Model):
     division = db.Column(db.String(50), nullable=True) # Maps to 'div'
     axe = db.Column(db.String(100), nullable=True)
     subaxis = db.Column(db.String(100), nullable=True)
+    metier = db.Column(db.String(100), nullable=True) # Added for metier
     hierarchy = db.Column(db.String(100), nullable=True) # Added Hierarchy (maps to category?)
     photo = db.Column(db.String(200), nullable=True) # Added Photo (filename/path)
     cogs = db.Column(db.Float, nullable=True) # Added COGS
@@ -43,6 +44,7 @@ class Product(db.Model):
             'division': self.division, # Frontend uses 'div'
             'axe': self.axe,
             'subaxis': self.subaxis,
+            'metier': self.metier, # Map operational_metier_label to metier
             'hierarchy': self.hierarchy, # Frontend uses 'hierarchy'
             'photo': self.photo,
             'cogs': self.cogs,

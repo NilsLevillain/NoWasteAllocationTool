@@ -71,6 +71,7 @@ body {
     color: var(--text-color);
     line-height: 1.6;
     transition: background-color 0.3s ease, color 0.3s ease;
+    font-size: 1.05rem; /* Increased overall font size slightly */
 }
 
 /* Header Styles */
@@ -334,8 +335,12 @@ main {
 }
 
 #allocation-chart, #division-chart, #brand-chart {
-    height: 300px;
+    height: 300px; /* Default height for other charts */
     margin-bottom: 1rem;
+}
+
+#allocation-chart { /* Specific increased height for the main allocation chart */
+    height: 450px; 
 }
 
 .chart-legend {

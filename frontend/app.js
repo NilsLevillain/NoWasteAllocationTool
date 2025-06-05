@@ -26,6 +26,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const divisionFilterDetail = document.getElementById('division-filter-detail');
     const brandFilterDetail = document.getElementById('brand-filter-detail');
     const categoryFilterDetail = document.getElementById('category-filter-detail');
+    const plantFilterSummary = document.getElementById('plant-filter-summary'); // New
+    const plantFilterDetail = document.getElementById('plant-filter-detail'); // New
 
     // Metric toggles
     const unitToggle = document.getElementById('unit-toggle');
@@ -166,21 +168,25 @@ document.addEventListener('DOMContentLoaded', () => {
         if (runButton) runButton.addEventListener('click', runAllocation); // Keep if old form exists
 
         // Filter change handlers
-        [divisionFilterSummary, brandFilterSummary, categoryFilterSummary].forEach(filter => {
-            filter.addEventListener('change', () => {
-                const filtered = filterData(); // Apply filters first
-                renderAllocationChart(filtered); // Pass filtered data to render functions
-                renderDivisionChart(filtered);
-                renderBrandChart(filtered);
-                updateSummaryMetrics(filtered);
-                renderAllocationLegend(filtered);
-            });
+        [divisionFilterSummary, brandFilterSummary, categoryFilterSummary, plantFilterSummary].forEach(filter => {
+            if (filter) { // Add null check
+                filter.addEventListener('change', () => {
+                    const filtered = filterData(); // Apply filters first
+                    renderAllocationChart(filtered); // Pass filtered data to render functions
+                    renderDivisionChart(filtered);
+                    renderBrandChart(filtered);
+                    updateSummaryMetrics(filtered);
+                    renderAllocationLegend(filtered);
+                });
+            }
         });
 
-        [divisionFilterDetail, brandFilterDetail, categoryFilterDetail].forEach(filter => {
-            filter.addEventListener('change', () => {
-                renderAllocationTable(); // Re-render table with new filters applied
-            });
+        [divisionFilterDetail, brandFilterDetail, categoryFilterDetail, plantFilterDetail].forEach(filter => {
+            if (filter) { // Add null check
+                filter.addEventListener('change', () => {
+                    renderAllocationTable(); // Re-render table with new filters applied
+                });
+            }
         });
     }
 
@@ -236,8 +242,15 @@ document.addEventListener('DOMContentLoaded', () => {
             renderBrandChart(filtered);
             updateSummaryMetrics(filtered);
             renderAllocationLegend(filtered);
+            
+            if (validationErrors) {
+                validationErrors.classList.add('hidden'); 
+                console.log('fetchAllocationData: validationErrors explicitly hidden before table render.'); // LOGGING
+            }
             renderAllocationTable(); // Render table with initial data
-            if (validationErrors) validationErrors.classList.add('hidden'); // Ensure banner is hidden initially
+            if (validationErrors) {
+                console.log(`fetchAllocationData: After renderAllocationTable, validationErrors hidden: ${validationErrors.classList.contains('hidden')}`); // LOGGING
+            }
 
             // Determine and set the initial detailed status after rendering
             updateAllocationStatus();
@@ -276,6 +289,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const divisions = [...new Set(allocationData.map(item => item.div).filter(Boolean))];
         const brands = [...new Set(allocationData.map(item => item.signature).filter(Boolean))];
         const categories = [...new Set(allocationData.map(item => item.hierarchy).filter(Boolean))];
+        const plants = [...new Set(allocationData.map(item => item.plant).filter(Boolean))]; // New
 
         // Populate division filters
         populateFilterOptions(divisionFilterSummary, divisions);
@@ -288,6 +302,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // Populate category filters
         populateFilterOptions(categoryFilterSummary, categories);
         populateFilterOptions(categoryFilterDetail, categories);
+
+        // Populate plant filters
+        populateFilterOptions(plantFilterSummary, plants);
+        populateFilterOptions(plantFilterDetail, plants);
     }
 
     function populateFilterOptions(selectElement, options) {
@@ -309,9 +327,17 @@ document.addEventListener('DOMContentLoaded', () => {
     function filterData() {
         // Get filter values from the currently visible view
         const isDetailView = !detailedView.classList.contains('hidden');
-        const divisionFilter = (isDetailView ? divisionFilterDetail.value : divisionFilterSummary.value) || 'all';
-        const brandFilter = (isDetailView ? brandFilterDetail.value : brandFilterSummary.value) || 'all';
-        const categoryFilter = (isDetailView ? categoryFilterDetail.value : categoryFilterSummary.value) || 'all';
+        
+        const divisionFilterValue = isDetailView ? divisionFilterDetail?.value : divisionFilterSummary?.value;
+        const brandFilterValue = isDetailView ? brandFilterDetail?.value : brandFilterSummary?.value;
+        const categoryFilterValue = isDetailView ? categoryFilterDetail?.value : categoryFilterSummary?.value;
+        const plantFilterValue = isDetailView ? plantFilterDetail?.value : plantFilterSummary?.value; // New
+
+        const divisionFilter = divisionFilterValue || 'all';
+        const brandFilter = brandFilterValue || 'all';
+        const categoryFilter = categoryFilterValue || 'all';
+        const plantFilter = plantFilterValue || 'all'; // New
+
 
         // Apply filters
         let filteredData = [...allocationData];
@@ -326,6 +352,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (categoryFilter !== 'all') {
             filteredData = filteredData.filter(item => item.hierarchy === categoryFilter);
+        }
+
+        if (plantFilter !== 'all') { // New
+            filteredData = filteredData.filter(item => item.plant === plantFilter);
         }
 
         return filteredData;
@@ -405,13 +435,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const staticColumnDefs = [
             { headerText: 'Div', key: 'div' },
             { headerText: 'Signature', key: 'signature' },
+            { headerText: 'Axe', key: 'axe' },
+            { headerText: 'SubAxe', key: 'subAxe' },
+            { headerText: 'Metier', key: 'metier' },
             { headerText: 'EAN', key: 'ean' },
-            { headerText: 'Hierarchy', key: 'hierarchy' },
-            { headerText: 'Name', key: 'name' },
+            { headerText: 'SKU', key: 'sku' },
+            { headerText: 'Description', key: 'description' },
             { headerText: 'Units', key: 'units' },
-            { headerText: 'Stock origin', key: 'stockOrigin' },
+            { headerText: 'Plant', key: 'plant' }, // Changed from 'Stock origin', data key is 'plant' (which holds description)
+            { headerText: 'FlagExcess6months', key: 'flagExcess6months' },
+            { headerText: 'FlagExcess12months', key: 'flagExcess12months' },
             { headerText: 'Allocation %', key: 'allocAccu' },
-            { headerText: 'Remaining Qty', key: 'remainingQty' } // Added column definition
+            { headerText: 'Remaining Qty', key: 'remainingQty' }
         ];
 
         // Add sort listeners to static headers
@@ -475,12 +510,16 @@ document.addEventListener('DOMContentLoaded', () => {
             // Static columns
             row.insertCell().textContent = item.div || '';
             row.insertCell().textContent = item.signature || '';
+            row.insertCell().textContent = item.axe || '';
+            row.insertCell().textContent = item.subAxe || '';
+            row.insertCell().textContent = item.metier || '';
             row.insertCell().textContent = item.ean || '';
-            row.insertCell().textContent = item.hierarchy || '';
-            // Photo cell removed
-            row.insertCell().textContent = item.name || '';
+            row.insertCell().textContent = item.sku || '';
+            row.insertCell().textContent = item.description || '';
             row.insertCell().textContent = (item.units || 0).toLocaleString();
-            row.insertCell().textContent = item.stockOrigin || '';
+            row.insertCell().textContent = item.plant || ''; // Was item.stockOrigin, now item.plant (which holds description)
+            row.insertCell().textContent = item.flagExcess6months || '';
+            row.insertCell().textContent = item.flagExcess12months || '';
             const allocAccuCell = row.insertCell();
             // Calculate total allocated for the item initially
             const totalAllocatedInitial = Object.values(item.channels || {}).reduce((sum, val) => sum + (val || 0), 0);
@@ -523,36 +562,37 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function handleAllocationChange(event) {
         const input = event.target;
-        const id = parseInt(input.dataset.id); // DB ID
+        const rowId = input.closest('tr').dataset.id; // Get the unique row ID (e.g., "ean_plant")
         const channel = input.dataset.channel;
         const value = parseInt(input.value) || 0;
 
         // Update local data state first
-        const item = allocationData.find(item => item.id === id);
+        // Find item by its unique 'id' (ean_plant)
+        const item = allocationData.find(d => d.id === rowId); 
         if (item) {
             if (!item.channels) item.channels = {}; // Ensure channels object exists
             item.channels[channel] = value;
 
-            // Recalculate total allocated and remaining quantity
-            const currentInputs = input.closest('tr').querySelectorAll('input[type="number"]');
-            const currentTotalAllocated = Array.from(currentInputs).reduce((sum, inp) => sum + (parseInt(inp.value) || 0), 0);
-            const currentRemainingQty = (item.units || 0) - currentTotalAllocated;
+            // Recalculate total allocated and remaining quantity for THIS ROW
+            const currentInputsInRow = input.closest('tr').querySelectorAll('input[type="number"]');
+            const currentTotalAllocatedInRow = Array.from(currentInputsInRow).reduce((sum, inp) => sum + (parseInt(inp.value) || 0), 0);
+            const currentRemainingQtyInRow = (item.units || 0) - currentTotalAllocatedInRow;
 
-            // Update local data state
-            item.allocAccu = calculateAllocAccuString(item.units || 0, currentTotalAllocated);
-            item.remainingQty = currentRemainingQty; // Store remaining qty in local state if needed
+            // Update local data state for this specific item
+            item.allocAccu = calculateAllocAccuString(item.units || 0, currentTotalAllocatedInRow);
+            // item.remainingQty = currentRemainingQtyInRow; // Not strictly needed in item state if cell is updated directly
 
-            // Update the specific cells in the DOM
+            // Update the specific cells in the DOM for THIS ROW
             const row = input.closest('tr');
             if (row) {
-                const accuracyCell = row.cells[7]; // Alloc % cell (index 7)
-                const remainingQtyCell = row.cells[8]; // Remaining Qty cell (index 8)
+                const accuracyCell = row.cells[12]; // Alloc % cell index
+                const remainingQtyCell = row.cells[13]; // Remaining Qty cell index
 
                 if (accuracyCell) {
-                    updateAllocAccuCell(accuracyCell, item.units || 0, currentTotalAllocated);
+                    updateAllocAccuCell(accuracyCell, item.units || 0, currentTotalAllocatedInRow);
                 }
                 if (remainingQtyCell) {
-                    updateRemainingQtyCell(remainingQtyCell, currentRemainingQty);
+                    updateRemainingQtyCell(remainingQtyCell, currentRemainingQtyInRow);
                 }
             }
 
@@ -568,10 +608,21 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function validateInput(input) {
-        const id = parseInt(input.dataset.id); // DB ID
-        const item = allocationData.find(item => item.id === id);
+        console.log('--- validateInput entered. Input object:', input); // NEW TOP LOG
+        if (!input || !input.dataset) {
+            console.error('validateInput: Received invalid input object or input.dataset is undefined.');
+            return true; // Exit if input is not as expected
+        }
+        console.log(`validateInput: allocationData length: ${allocationData ? allocationData.length : 'undefined'}. Sample:`, allocationData ? allocationData.slice(0,1) : 'N/A'); // NEW LOG
 
-        if (!item) return true; // Cannot validate if item not found
+        const idFromDataset = input.dataset.id; // This is a string
+        // Find the item using string comparison, similar to validateAllInputs
+        const item = allocationData.find(itemL => String(itemL.id) === idFromDataset);
+
+        if (!item) {
+            console.log(`validateInput: Item not found for idFromDataset = ${idFromDataset}. allocationData checked.`); // MODIFIED LOG
+            return true; // Cannot validate if item not found
+        }
 
         const row = input.closest('tr');
         if (!row) return true; // Cannot validate if row not found
@@ -582,9 +633,11 @@ document.addEventListener('DOMContentLoaded', () => {
         inputs.forEach(inp => {
             totalAllocated += parseInt(inp.value) || 0;
         });
+        console.log(`validateInput for item ID ${item?.id}: item.units = ${item?.units}, calculated totalAllocated from inputs = ${totalAllocated}`); // LOGGING
 
         const itemUnits = item.units || 0;
         const isOverAllocated = itemUnits > 0 && totalAllocated > itemUnits; // Check only for over-allocation
+        console.log(`validateInput for item ID ${item?.id}: isOverAllocated = ${isOverAllocated}`); // LOGGING
 
         // Update input styling for all inputs in the row based *only* on over-allocation
         inputs.forEach(inp => {
@@ -596,6 +649,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const anyOverAllocatedRows = document.querySelectorAll('.allocation-table input.error').length > 0;
         if (validationErrors) {
             validationErrors.classList.toggle('hidden', !anyOverAllocatedRows); // Hide if NO over-allocation errors
+            console.log(`validateInput for item ID ${item?.id}: validationErrors hidden: ${validationErrors.classList.contains('hidden')}`); // LOGGING
             if (anyOverAllocatedRows && errorMessage) {
                 errorMessage.textContent = 'Total allocation exceeds available units for some products.';
             } else if (!anyOverAllocatedRows && errorMessage) {
@@ -608,23 +662,36 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function validateAllInputs() {
+        console.log('validateAllInputs: Called'); // LOGGING
         const inputs = document.querySelectorAll('.allocation-table input[type="number"]');
+        console.log(`validateAllInputs: Found ${inputs.length} input elements to validate.`); // LOGGING
         const validatedIds = new Set();
         let allValid = true;
 
         inputs.forEach(input => {
-            const id = parseInt(input.dataset.id);
-            if (!validatedIds.has(id)) {
-                validatedIds.add(id);
-                // Find the item corresponding to this input's row
-                 const item = allocationData.find(item => item.id === id);
+            const idFromDataset = input.dataset.id; // Keep as string
+            // Attempt to use validatedIds with the string form of ID.
+            // If item.id in allocationData can be numeric, this Set might store mixed types if not careful.
+            // For now, let's assume we process based on the string ID from dataset.
+            if (!validatedIds.has(idFromDataset)) { // Use string ID for validatedIds check
+                validatedIds.add(idFromDataset);
+                console.log(`validateAllInputs: Processing idFromDataset = ${idFromDataset}`); // LOGGING
+                // Find the item corresponding to this input's row by comparing string versions of IDs
+                 const item = allocationData.find(itemL => String(itemL.id) === idFromDataset);
                  if (item) {
+                    console.log(`validateAllInputs: Found item for idFromDataset = ${idFromDataset}`, item); // LOGGING
                      // Find one input in the row to trigger validation for the whole row
-                     const rowInput = document.querySelector(`.allocation-table tr[data-id="${id}"] input[type="number"]`);
+                     // Ensure querySelector uses the string ID from dataset correctly
+                     const rowInput = document.querySelector(`.allocation-table tr[data-id="${idFromDataset}"] input[type="number"]`);
                      if (rowInput) {
+                        console.log(`validateAllInputs: Found rowInput for idFromDataset = ${idFromDataset}`, rowInput); // LOGGING
                          const isValid = validateInput(rowInput); // Validate using one input from the row
                          if (!isValid) allValid = false;
+                     } else {
+                        console.log(`validateAllInputs: Did NOT find rowInput for idFromDataset = ${idFromDataset}`); // LOGGING
                      }
+                 } else {
+                    console.log(`validateAllInputs: Did NOT find item in allocationData for idFromDataset = ${idFromDataset}`); // LOGGING
                  }
             }
         });
@@ -634,49 +701,81 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderAllocationChart(data = filterData()) { // Accept optional data
         if (!allocationChartContainer || !Highcharts) return;
 
-        // Calculate totals for each channel based on the current metric view
-        const channelTotals = {};
-        let grandTotal = 0;
+        const uniquePlants = [...new Set(data.map(item => item.plant).filter(Boolean))].sort();
+        const plantChannelTotals = {}; // { plant1: { channelA: total, channelB: total }, plant2: { ... } }
 
-        channelColumns.forEach(channel => { channelTotals[channel] = 0; });
-
-        data.forEach(item => {
-            const unitValue = item.units || 0;
-            const cogsValue = item.cogs || 0; // Total COGS for product inventory from API
-            const cogsPerUnit = unitValue > 0 ? cogsValue / unitValue : 0;
-
+        uniquePlants.forEach(plant => {
+            plantChannelTotals[plant] = {};
             channelColumns.forEach(channel => {
-                const allocatedUnits = item.channels?.[channel] || 0;
-                const value = currentMetricView === 'unit'
-                    ? allocatedUnits
-                    : allocatedUnits * cogsPerUnit;
-                channelTotals[channel] += value;
+                plantChannelTotals[plant][channel] = 0;
             });
         });
-        grandTotal = Object.values(channelTotals).reduce((sum, val) => sum + val, 0);
 
-        const chartData = channelColumns.map(channel => {
-            const percentage = grandTotal > 0 ? (channelTotals[channel] / grandTotal) * 100 : 0;
+        data.forEach(item => {
+            const plant = item.plant;
+            if (!plant || !uniquePlants.includes(plant)) return; // Skip if plant is undefined or not in uniquePlants
+
+            const unitValue = item.units || 0; 
+            const cogsValue = item.cogs || 0; 
+            const cogsPerUnit = unitValue > 0 ? cogsValue / unitValue : 0; // Ensure this is uncommented and used if needed, or remove if not. For now, keep it.
+
+            // The logic for `value_for_metric` determines what the chart bars represent.
+            // Current interpretation: "Total stock (by plant) of EANs that are allocated to a given channel".
+            // This means we sum `item.units` (or `item.cogs`) for EAN-Plant items where the EAN is allocated to the channel.
+            const value_for_metric = currentMetricView === 'unit' ? item.units : item.cogs;
+
+            channelColumns.forEach(channel => {
+                // Check if the EAN of the current item (which is EAN-Plant specific)
+                // has any allocation to the current channel.
+                // `item.channels` is an object like { channelName: allocatedQtyForEAN, ... }
+                if (item.channels?.[channel] && item.channels[channel] > 0) { 
+                    plantChannelTotals[plant][channel] += value_for_metric; 
+                }
+            });
+        });
+
+        const series = uniquePlants.map(plant => {
             return {
-                name: channel,
-                y: parseFloat(percentage.toFixed(1)),
-                value: channelTotals[channel]
+                name: plant,
+                data: channelColumns.map(channel => plantChannelTotals[plant][channel] || 0)
             };
         });
 
-        const colors = { /* ... colors ... */
-             'Outlet': '#7CB5EC', 'F&F': '#F7DC6F', 'Liquidation': '#D3D3D3',
-             'Donation': '#F8C471', 'Giverny': '#5DADE2', 'Village': '#F4D03F', 'Corbeil': '#A569BD'
-        };
-
         Highcharts.chart('allocation-chart', {
-            chart: { type: 'column', backgroundColor: 'transparent' },
-            title: { text: null },
+            chart: { type: 'bar', backgroundColor: 'transparent' },
+            colors: ['#4285F4', '#DB4437', '#F4B400', '#0F9D58', '#AB47BC', '#00ACC1', '#FF7043', '#9E9D24', '#5C6BC0', '#26A69A'], // Distinct professional palette
+            title: { text: "Stock of EANs Allocated to Channels (by Plant)" },
             xAxis: { categories: channelColumns, crosshair: true, labels: { style: { color: getComputedStyle(document.documentElement).getPropertyValue('--text-color') } } },
-            yAxis: { min: 0, max: 100, title: { text: '%', style: { color: getComputedStyle(document.documentElement).getPropertyValue('--text-color') } }, labels: { style: { color: getComputedStyle(document.documentElement).getPropertyValue('--text-color') } } },
-            tooltip: { headerFormat: '<span style="font-size:10px">{point.key}</span><table>', pointFormat: '<tr><td style="padding:0"><b>{point.y:.1f}%</b></td></tr><tr><td style="padding:0">{point.value:,.0f} ' + (currentMetricView === 'unit' ? 'units' : '€') + '</td></tr>', footerFormat: '</table>', shared: true, useHTML: true },
-            plotOptions: { column: { pointPadding: 0.2, borderWidth: 0 } },
-            series: [{ name: 'Allocation', showInLegend: false, data: chartData.map(point => ({ y: point.y, value: point.value, color: colors[point.name] || '#7CB5EC' })) }],
+            yAxis: {
+                min: 0,
+                title: { text: currentMetricView === 'unit' ? 'Total Units' : 'Total COGS (€)', style: { color: getComputedStyle(document.documentElement).getPropertyValue('--text-color') } },
+                labels: { style: { color: getComputedStyle(document.documentElement).getPropertyValue('--text-color') } },
+                stackLabels: {
+                    enabled: true,
+                    style: {
+                        fontWeight: 'bold',
+                        color: (Highcharts.defaultOptions.title.style && Highcharts.defaultOptions.title.style.color) || 'gray'
+                    }
+                }
+            },
+            tooltip: {
+                headerFormat: '<b>{point.x}</b><br/>',
+                pointFormat: '{series.name}: {point.y:,.0f}<br/>Total: {point.stackTotal:,.0f}'
+            },
+            plotOptions: {
+                bar: {
+                    stacking: 'normal',
+                    dataLabels: {
+                        enabled: true,
+                        formatter: function() {
+                            if (this.y > 0) return Highcharts.numberFormat(this.y, 0, '.', ',');
+                            return null;
+                        },
+                        style: { color: '#000000', textOutline: 'none' }
+                    }
+                }
+            },
+            series: series,
             credits: { enabled: false }
         });
     }
@@ -693,14 +792,17 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         const chartData = Object.keys(divisionData).map(div => ({ name: div, y: divisionData[div] }));
+        const numDivisions = chartData.length > 0 ? chartData.length : 1; // Ensure at least 1 for generateColorShades
+        const pieColors = generateColorShades('#ffff3f', '#007f5f', numDivisions);
 
         Highcharts.chart('division-chart', {
             chart: { type: 'pie', backgroundColor: 'transparent' },
+            colors: pieColors,
             title: { text: null },
             tooltip: { pointFormat: '{series.name}: <b>{point.y:,.0f} ' + (currentMetricView === 'unit' ? 'units' : '€') + '</b>' },
             accessibility: { point: { valueSuffix: currentMetricView === 'unit' ? 'units' : '€' } },
             plotOptions: { pie: { allowPointSelect: true, cursor: 'pointer', dataLabels: { enabled: true, format: '<b>{point.name}</b>: {point.percentage:.1f} %', style: { color: getComputedStyle(document.documentElement).getPropertyValue('--text-color') } } } },
-            series: [{ name: 'Stock at Risk', colorByPoint: true, data: chartData }], // Updated series name
+            series: [{ name: 'Stock at Risk', data: chartData }],
             credits: { enabled: false }
         });
     }
@@ -719,15 +821,20 @@ document.addEventListener('DOMContentLoaded', () => {
         const chartData = Object.keys(brandData)
             .map(brand => ({ name: brand, y: brandData[brand] }))
             .sort((a, b) => b.y - a.y)
-            .slice(0, 5); // Top 5
+            .slice(0, 10); // Show top 10 brands, or fewer if less than 10
+
+        const numBrands = chartData.length > 0 ? chartData.length : 1; // Ensure at least 1 for generateColorShades
+        const pieColors = generateColorShades('#ffff3f', '#007f5f', numBrands);
+
 
         Highcharts.chart('brand-chart', {
             chart: { type: 'pie', backgroundColor: 'transparent' },
+            colors: pieColors,
             title: { text: null },
             tooltip: { pointFormat: '{series.name}: <b>{point.y:,.0f} ' + (currentMetricView === 'unit' ? 'units' : '€') + '</b>' },
             accessibility: { point: { valueSuffix: currentMetricView === 'unit' ? 'units' : '€' } },
             plotOptions: { pie: { allowPointSelect: true, cursor: 'pointer', dataLabels: { enabled: true, format: '<b>{point.name}</b>: {point.percentage:.1f} %', style: { color: getComputedStyle(document.documentElement).getPropertyValue('--text-color') } } } },
-            series: [{ name: 'Stock at Risk', colorByPoint: true, data: chartData }], // Updated series name
+            series: [{ name: 'Stock at Risk', data: chartData }],
             credits: { enabled: false }
         });
     }
@@ -884,6 +991,10 @@ document.addEventListener('DOMContentLoaded', () => {
         autoAllocateBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Allocating...';
         autoAllocateBtn.disabled = true;
 
+        let fetchErrorOccurred = false;
+        let fetchErrorMessage = '';
+        let directCallSuccessful = false;
+
         try {
             // Call the backend endpoint to trigger the solver
             const response = await fetch('http://127.0.0.1:5000/api/auto_allocate', {
@@ -896,33 +1007,73 @@ document.addEventListener('DOMContentLoaded', () => {
                 // body: JSON.stringify({ filters: { division: divisionFilterDetail.value, ... } })
             });
 
+            const responseText = await response.text(); 
+            console.log("Raw response from /api/auto_allocate:", responseText); 
+
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({ message: 'Failed to run auto-allocation.' }));
-                throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+                let errorDetail = `HTTP error! status: ${response.status}`;
+                try {
+                    const errorJson = JSON.parse(responseText);
+                    errorDetail = errorJson.message || errorJson.error || responseText;
+                } catch (e) {
+                    errorDetail = "Server error (non-JSON response): " + responseText.substring(0, 100) + (responseText.length > 100 ? "..." : "");
+                }
+                throw new Error(errorDetail); // This error will be caught by the catch block below
             }
 
-            const result = await response.json();
-            console.log("Auto-allocation result:", result);
-
-            // Assuming success means the backend updated the data,
-            // so we re-fetch the latest allocation data to refresh the UI
-            await fetchAllocationData(); // Refresh the entire dataset and UI
-
-            // Update button text briefly to show success
-            autoAllocateBtn.innerHTML = '<i class="fas fa-check"></i> Allocated!';
-            setTimeout(() => {
-                 autoAllocateBtn.innerHTML = originalText.includes("Auto-Allocate") ? originalText : '<i class="fas fa-magic"></i> Auto-Allocate';
-                 autoAllocateBtn.disabled = false;
-            }, 1500);
-
+            // Try to parse to ensure it's valid JSON
+            JSON.parse(responseText); 
+            console.log("Successfully received and parsed response from /api/auto_allocate.");
+            directCallSuccessful = true; // Mark the direct API call as successful
 
         } catch (error) {
-            console.error('Error during auto-allocation:', error);
-            alert(`Auto-allocation failed: ${error.message}`);
-            // Restore button immediately on error
-            autoAllocateBtn.innerHTML = originalText.includes("Auto-Allocate") ? originalText : '<i class="fas fa-magic"></i> Auto-Allocate';
-            autoAllocateBtn.disabled = false;
+            // This catch block handles:
+            // 1. "Failed to fetch" from the fetch() call itself.
+            // 2. Errors thrown if !response.ok.
+            // 3. Errors thrown if JSON.parse(responseText) fails.
+            fetchErrorOccurred = true;
+            fetchErrorMessage = error.message;
+            console.error('Error during /api/auto_allocate call or response processing:', fetchErrorMessage);
+            if (error.cause) console.error('Cause:', error.cause);
         }
+
+        // Always attempt to refresh data from /api/allocation_data,
+        // as the server-side allocation might have completed even if fetching its direct response failed.
+        console.log("Now attempting to refresh data with fetchAllocationData() regardless of prior fetch outcome...");
+        try {
+            await fetchAllocationData(); // Refresh the entire dataset and UI
+            console.log("fetchAllocationData() completed after auto-allocate attempt.");
+        } catch (refreshError) {
+            console.error("Error during subsequent fetchAllocationData():", refreshError.message);
+            if (!fetchErrorOccurred) { // If auto_allocate call was fine, but refresh failed
+                fetchErrorOccurred = true; // Mark that an error occurred in the overall process
+                fetchErrorMessage = `Data refresh failed after allocation: ${refreshError.message}`;
+            } else {
+                // Append refresh error information if auto_allocate already failed
+                fetchErrorMessage += ` | Additionally, data refresh failed: ${refreshError.message}`;
+            }
+        }
+        
+        if (fetchErrorOccurred) {
+            alert(`Auto-allocation process encountered an issue: ${fetchErrorMessage}`);
+        } else if (directCallSuccessful) {
+            // Only show "Allocated!" if the direct /api/auto_allocate call was successful AND no subsequent refresh error
+            autoAllocateBtn.innerHTML = '<i class="fas fa-check"></i> Allocated!';
+        }
+
+        // Restore button text and enable it after a delay.
+        // The button text will show "Allocated!" only if directCallSuccessful and no fetchErrorOccurred.
+        // Otherwise, it reverts to original text.
+        setTimeout(() => {
+             if (directCallSuccessful && !fetchErrorOccurred) {
+                 // Keep "Allocated!" for a bit then revert
+                 autoAllocateBtn.innerHTML = originalText.includes("Auto-Allocate") ? originalText : '<i class="fas fa-magic"></i> Auto-Allocate';
+             } else {
+                 // If there was any error, or direct call wasn't marked successful, revert directly
+                 autoAllocateBtn.innerHTML = originalText.includes("Auto-Allocate") ? originalText : '<i class="fas fa-magic"></i> Auto-Allocate';
+             }
+             autoAllocateBtn.disabled = false;
+        }, (directCallSuccessful && !fetchErrorOccurred) ? 1500 : 500); // Shorter delay if error or reverting without success message
     }
 
     async function validateAllocation() {
@@ -992,7 +1143,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const wsData = [];
         // Header row
-        const headerRow = ['Division', 'Brand', 'EAN', 'Category', 'Product Name', 'Total Units', 'Stock Origin', 'Allocation %', 'Remaining Qty']; // Updated header
+        const headerRow = ['Div', 'Signature', 'Axe', 'SubAxe', 'Metier', 'EAN', 'SKU', 'Description', 'Units', 'Plant', 'FlagExcess6months', 'FlagExcess12months', 'Allocation %', 'Remaining Qty']; // Changed 'Stock origin' to 'Plant'
         channelColumns.forEach(channel => headerRow.push(channel)); // Use dynamic channel columns
         wsData.push(headerRow);
 
@@ -1005,11 +1156,16 @@ document.addEventListener('DOMContentLoaded', () => {
             const row = [
                 item.div || '',
                 item.signature || '',
+                item.axe || '',
+                item.subAxe || '',
+                item.metier || '',
                 item.ean || '',
-                item.hierarchy || '',
-                item.name || '',
+                item.sku || '',
+                item.description || '',
                 item.units || 0,
-                item.stockOrigin || '',
+                item.plant || '', // Was item.stockOrigin, now item.plant (which holds description)
+                item.flagExcess6months || '',
+                item.flagExcess12months || '',
                 allocPerc, // Use calculated percentage string
                 remainingQty // Add remaining quantity
             ];
@@ -1131,6 +1287,81 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             cell.classList.add('zero-qty');
         }
+    }
+
+    // --- Utility Functions ---
+    function parseAllocAccu(allocAccu) {
+        // Handle potential null or undefined input
+        return parseInt((allocAccu || '0%').replace('%', ''), 10); // Keep this for parsing the string if needed elsewhere
+    }
+
+    // Helper to calculate the allocation percentage string
+    function calculateAllocAccuString(itemUnits, totalAllocated) {
+        let percentage = 0;
+        if (itemUnits > 0) {
+            // Use Math.round and allow over 100%
+            percentage = Math.round((totalAllocated / itemUnits) * 100);
+        } else if (totalAllocated > 0) {
+            percentage = Infinity; // Indicate allocation with zero available units
+        }
+        return `${percentage}%`;
+    }
+
+    // Helper function to update the Allocation % cell content
+    function updateAllocAccuCell(cell, itemUnits, totalAllocated) {
+        const percentageString = calculateAllocAccuString(itemUnits, totalAllocated);
+        cell.textContent = percentageString;
+        // Optional: Add styling based on percentage if needed (e.g., red if > 100)
+        cell.classList.toggle('over-allocated-perc', itemUnits > 0 && totalAllocated > itemUnits);
+    }
+
+    // Helper function to update the Remaining Qty cell content and style
+    function updateRemainingQtyCell(cell, remainingQty) {
+        cell.textContent = remainingQty.toLocaleString();
+        cell.classList.remove('negative-qty', 'positive-qty', 'zero-qty'); // Clear previous classes
+        if (remainingQty < 0) {
+            cell.classList.add('negative-qty');
+        } else if (remainingQty > 0) {
+            cell.classList.add('positive-qty');
+        } else {
+            cell.classList.add('zero-qty');
+        }
+    }
+
+    function parseHexColor(hex) {
+        let r = 0, g = 0, b = 0;
+        if (hex.length === 4) { // #RGB
+            r = parseInt(hex[1] + hex[1], 16);
+            g = parseInt(hex[2] + hex[2], 16);
+            b = parseInt(hex[3] + hex[3], 16);
+        } else if (hex.length === 7) { // #RRGGBB
+            r = parseInt(hex[1] + hex[2], 16);
+            g = parseInt(hex[3] + hex[4], 16);
+            b = parseInt(hex[5] + hex[6], 16);
+        }
+        return [r, g, b];
+    }
+
+    function rgbToHex(r, g, b) {
+        return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
+    }
+
+    function generateColorShades(startColorHex, endColorHex, numShades) {
+        if (numShades <= 0) return [];
+        if (numShades === 1) return [startColorHex];
+
+        const shades = [];
+        const [r1, g1, b1] = parseHexColor(startColorHex);
+        const [r2, g2, b2] = parseHexColor(endColorHex);
+
+        for (let i = 0; i < numShades; i++) {
+            const t = numShades === 1 ? 0.5 : i / (numShades - 1); // Avoid division by zero if numShades is 1
+            const r = Math.round(r1 + t * (r2 - r1));
+            const g = Math.round(g1 + t * (g2 - g1));
+            const b = Math.round(b1 + t * (b2 - b1));
+            shades.push(rgbToHex(r, g, b));
+        }
+        return shades;
     }
 
     // --- Initialize Application ---
