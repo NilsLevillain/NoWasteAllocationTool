@@ -55,11 +55,17 @@ The system implements the Observer pattern to notify various components when opt
     - **Consistency**: Standardized data structures (Pandas DataFrames, dictionaries) returned by loading functions.
     - **Maintainability**: Single point of change for data loading logic.
     - **Testability**: Dedicated unit tests for data loading utilities ensure reliability.
+- **File-First Data Sourcing for Endpoints**:
+    - The `/api/allocation_data` endpoint (for displaying data) now loads product, channel, and inventory data directly from files using `backend/utils.py`, bypassing database queries for these entities.
+    - The `/api/auto_allocate` endpoint (for running the solver) also loads all its primary data inputs (products, channels, inventory, rules, demand, existing stock) directly from files via `backend/utils.py`, ensuring consistency with standalone solver execution.
 - **Robust Error Handling**: Data loading utilities include specific error handling for file not found, missing columns, and data parsing issues, with integrated logging.
 
 ## Error Handling Patterns
 - Input validation errors are caught early and presented to users for correction
 - Optimization errors (infeasible solutions, etc.) are handled gracefully with explanations
 - System errors are logged comprehensively while providing user-friendly messages
+- **Enhanced API Debugging**:
+    - Server-side logging in `main.py` for the `/api/auto_allocate` endpoint now includes the exact data being prepared for the JSON response.
+    - Client-side logging in `frontend/app.js` for the `autoAllocate` function has been improved to capture the raw text of the server's response before attempting JSON parsing, aiding in diagnosing "Failed to fetch" or JSON parsing errors.
 
 The system uses the Strategy pattern to apply different error handling approaches based on the error type and context.

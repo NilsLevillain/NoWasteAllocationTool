@@ -137,123 +137,111 @@ if __name__ == '__main__':
 # @jwt_required() # Add authentication if needed
 def auto_allocate_endpoint():
     """
-    Triggers the allocation solver using current data and parameters.
+    Triggers the allocation solver using current data and parameters from files.
     Clears previous allocations and saves the new results.
     """
     try:
-        # 1. Load Data
-        products_list = [p.to_dict() for p in Product.query.all()]
-        channels_list = [c.to_dict() for c in Channel.query.all()]
-        inventory_list = [i.to_dict() for i in Inventory.query.all()]
+        app.logger.info("--- Starting Auto-Allocation from Files ---")
 
-        if not products_list or not channels_list or not inventory_list:
-             return jsonify({'error': 'Missing essential data (products, channels, or inventory)'}), 400
-
-        # Create and validate channels_df
-        temp_channels_df = pd.DataFrame(channels_list)
-        # The 'id' column from to_dict() actually holds the channel_id_string
-        if 'id' not in temp_channels_df.columns:
-            app.logger.error(f"Missing 'id' column (containing channel_id_string) in Channel data. Columns found: {temp_channels_df.columns.tolist()}")
-            return jsonify({'error': "Internal data error: Channel ID missing."}), 500
-        required_channel_cols = ['channel_type'] # Columns needed by solver (capacity check removed as per comment)
-        for col in required_channel_cols:
-             if col not in temp_channels_df.columns:
-                  app.logger.error(f"Missing '{col}' column in Channel data. Columns found: {temp_channels_df.columns.tolist()}")
-                  # Allow capacity to be missing/null for outlets, handle inside solver
-                  # return jsonify({'error': f"Internal data error: Channel column '{col}' missing."}), 500
-                  pass # Relaxing this check, solver handles missing capacity
-        # Set index using the 'id' column which contains the string identifier
-        channels_df = temp_channels_df.set_index('id')
-
-        # Create and validate products_df
-        temp_products_df = pd.DataFrame(products_list)
-        if 'ean' not in temp_products_df.columns:
-             app.logger.error(f"Missing 'ean' column in Product data. Columns found: {temp_products_df.columns.tolist()}")
-             return jsonify({'error': "Internal data error: Product EAN missing."}), 500
-        # Add checks for other columns needed by solver if necessary
-        # 'abc_class' is calculated, not expected directly in products_df from DB
-        required_product_cols = ['brand', 'division', 'axe', 'subaxis', 'metier'] 
-        for col in required_product_cols:
-             if col not in temp_products_df.columns:
-                  app.logger.warning(f"Optional product column '{col}' missing. Solver might behave unexpectedly if rules depend on it.")
-        products_df = temp_products_df.set_index('ean')
-
-        # Inventory DataFrame validation
-        inventory_df = pd.DataFrame(inventory_list)
-        # Check for 'product_ean' as defined in Inventory.to_dict()
-        if 'product_ean' not in inventory_df.columns or 'quantity' not in inventory_df.columns:
-             app.logger.error(f"Missing required columns in Inventory data. Columns found: {inventory_df.columns.tolist()}")
-             return jsonify({'error': "Internal data error: Inventory columns missing."}), 500
-
-
-        # --- Load Data using backend.utils ---
+        # Define file paths
+        masterdata_file_path = os.path.join(app.root_path, 'data', 'InputData', 'masterdata.csv')
+        inventory_file_path = os.path.join(app.root_path, 'data', 'InputData', 'bad_stock_inventory.csv')
+        channellist_file_path = os.path.join(app.root_path, 'data', 'ExcelParameters', 'ChannelList.xlsx')
         sellout_file_path = os.path.join(app.root_path, 'data', 'InputData', 'sellout.csv')
-        demand_dict = load_demand_dict(
-            file_path=sellout_file_path,
-            ean_col='barcode',
-            channel_col='store_code',
-            demand_qty_col='total_items_weekly'
-        )
+        coverage_file_path = os.path.join(app.root_path, 'data', 'ExcelParameters', 'CoverageperABCperChannel.xlsx')
+        capacity_file_path = os.path.join(app.root_path, 'data', 'ExcelParameters', 'CapacityPerChannel.xlsx')
+        assortment_file_path = os.path.join(app.root_path, 'data', 'ExcelParameters', 'AssortmentperSubaxeperSignature.xlsx')
+        push_new_sku_file_path = os.path.join(app.root_path, 'data', 'ExcelParameters', 'PushNewSKU.xlsx')
+        instore_stock_file_path = os.path.join(app.root_path, 'data', 'InputData', 'in_store_inventory.csv')
+        intransit_stock_file_path = os.path.join(app.root_path, 'data', 'InputData', 'stock_in_transit.csv')
 
-        coverage_file = os.path.join(app.root_path, 'data', 'ExcelParameters', 'CoverageperABCperChannel.xlsx')
+        # 1. Load Data directly from files using backend.utils
+        app.logger.info("Loading products_df from file...")
+        products_df = load_products_df(
+            masterdata_file_path,
+            # Assuming default column names in load_products_df match masterdata.csv
+            # ean_col='product_gtin', brand_col='operational_signature_label', etc.
+        )
+        if products_df.empty:
+            app.logger.error("Failed to load products or products data is empty.")
+            return jsonify({'error': 'Failed to load products data from file.'}), 500
+        # Ensure index is 'ean' and it's a string
+        if products_df.index.name != 'ean':
+            if 'ean' in products_df.columns:
+                products_df = products_df.set_index('ean')
+            else: # If 'ean' is not even a column after loading (should be handled by load_products_df)
+                 app.logger.error("EAN column not found in loaded products_df.")
+                 return jsonify({'error': 'EAN column missing in products data.'}), 500
+        products_df.index = products_df.index.astype(str)
+
+
+        app.logger.info("Loading channels_df from file...")
+        channels_df = load_channels_df(channellist_file_path)
+        if channels_df.empty:
+            app.logger.error("Failed to load channels or channels data is empty.")
+            return jsonify({'error': 'Failed to load channels data from file.'}), 500
+        # Ensure index is 'id' (channel_id_string) and it's a string
+        if channels_df.index.name != 'id': # load_channels_df sets index to 'id'
+            app.logger.error("Channel DataFrame not indexed by 'id' as expected.")
+            return jsonify({'error': 'Channel data malformed after load.'}), 500
+        channels_df.index = channels_df.index.astype(str)
+
+
+        app.logger.info("Loading inventory_df from file...")
+        inventory_df = load_inventory_df(inventory_file_path) # This returns a DataFrame with 'product_ean' and 'quantity'
+        if inventory_df.empty:
+            app.logger.warning("Inventory data is empty. Allocations might be zero if no stock.")
+        # inventory_df is not indexed by default by load_inventory_df, it has 'product_ean' column
+
+        app.logger.info("Loading demand_dict from file...")
+        demand_dict = load_demand_dict(sellout_file_path)
+
+        app.logger.info("Loading optimization rules from files...")
         coverage_rules = load_optimization_rules(
-            coverage_file, CoverageDaysRule,
+            coverage_file_path, CoverageDaysRule,
             channel_id='channel_id', abc_class='abc_class', coverage_days='coverage_days'
         )
-
-        capacity_file = os.path.join(app.root_path, 'data', 'ExcelParameters', 'CapacityPerChannel.xlsx')
         outlet_capacity_rules = load_optimization_rules(
-            capacity_file, OutletSKUCapacityRule,
-            channel_id='Channel',  # Note: Column name from original file
-            division='operational_division',
-            axe='operational_axe_label',
-            max_skus='Max capacity (in # of SKU)' # Note: Column name from original file
+            capacity_file_path, OutletSKUCapacityRule,
+            channel_id='channel_id', division='operational_division',
+            axe='operational_axe_label', max_skus='max_skus'
         )
-
-        assortment_file = os.path.join(app.root_path, 'data', 'ExcelParameters', 'AssortmentperSubaxeperSignature.xlsx')
         outlet_assortment_rules = load_optimization_rules(
-            assortment_file, OutletAssortmentRule,
-            metier='operational_metier_label',
-            subaxis='operational_sub_axe_label',
-            brand='operational_signature_label',
-            max_skus='max_skus'
+            assortment_file_path, OutletAssortmentRule,
+            metier='operational_metier_label', subaxis='operational_sub_axe_label',
+            brand='operational_signature_label', max_skus='max_skus'
         )
-        
-        push_new_sku_file = os.path.join(app.root_path, 'data', 'ExcelParameters', 'PushNewSKU.xlsx')
         push_new_sku_rules = load_optimization_rules(
-            push_new_sku_file, PushNewSKURule,
-            division='operational_division',
-            subaxis='operational_sub_axe_label',
+            push_new_sku_file_path, PushNewSKURule,
+            division='operational_division', subaxis='operational_sub_axe_label',
             push_quantity='Push Quantity if New SKU'
         )
-
+        
+        app.logger.info("Creating OptimizationParameters...")
         parameters = OptimizationParameters(
+            seasonality_coefficient=1.0,  # Hardcoded seasonality_coefficient
             coverage_days_rules=coverage_rules,
             outlet_sku_capacity_rules=outlet_capacity_rules,
             outlet_assortment_rules=outlet_assortment_rules,
-            push_new_sku_rules=push_new_sku_rules, # Added push_new_sku_rules
-            restricted_brands_for_donation=['BrandB'] # Example, can be configured
+            push_new_sku_rules=push_new_sku_rules,
+            restricted_brands_for_donation=['BrandB'] # Example, make configurable if needed
         )
 
-        instore_stock_file = os.path.join(app.root_path, 'data', 'InputData', 'in_store_inventory.csv')
-        intransit_stock_file = os.path.join(app.root_path, 'data', 'InputData', 'stock_in_transit.csv')
+        app.logger.info("Loading existing_stock_dict from files...")
         existing_stock_dict = load_existing_stock_dict(
-            in_store_fp=instore_stock_file,
-            in_transit_fp=intransit_stock_file
-            # Default column names in load_existing_stock_dict match the CSVs
+            in_store_fp=instore_stock_file_path,
+            in_transit_fp=intransit_stock_file_path
         )
         
-        # Calculate ABC classification (raw_sellout_df is loaded from sellout_file_path)
-        sellout_file_path = os.path.join(app.root_path, 'data', 'InputData', 'sellout.csv')
+        app.logger.info("Calculating ABC classification...")
         raw_sellout_df = pd.read_csv(sellout_file_path)
+        raw_sellout_df['barcode'] = raw_sellout_df['barcode'].astype(str) # Ensure EAN is string for matching
         
         all_channel_ids_list = channels_df.index.tolist()
-
-        # Ensure products_df passed to calculate_abc_classification_and_new_skus is the one set by ean index
         product_channel_abc_map = calculate_abc_classification_and_new_skus(
             sellout_df=raw_sellout_df,
-            product_master_df=products_df, # products_df is already indexed by ean
-            all_channel_ids=all_channel_ids_list,
+            product_master_df=products_df, # Already indexed by EAN (string)
+            all_channel_ids=all_channel_ids_list, # List of string channel IDs
             sellout_ean_col='barcode', 
             sellout_channel_col='store_code',
             sellout_qty_col='total_items_weekly'
@@ -261,70 +249,66 @@ def auto_allocate_endpoint():
         app.logger.info(f"Calculated ABC map for {len(product_channel_abc_map)} product-channel pairs.")
 
         # 2. Run Solver
-        app.logger.info("Running allocation solver...")
+        app.logger.info("Running allocation solver with file-loaded data...")
         model, status, allocation_results = optimize_allocation(
             products_df=products_df,
             channels_df=channels_df,
-            inventory_df=inventory_df,
+            inventory_df=inventory_df, # This is the DataFrame with 'product_ean' and 'quantity'
             demand_dict=demand_dict,
             parameters=parameters,
-            existing_stock_dict=existing_stock_dict, # Pass existing_stock_dict
-            product_channel_abc_map=product_channel_abc_map # Pass product_channel_abc_map
+            existing_stock_dict=existing_stock_dict,
+            product_channel_abc_map=product_channel_abc_map
         )
         app.logger.info(f"Solver finished with status: {status}")
 
         # 3. Process Results
         if status != 'Optimal':
-            # Optionally save the model file for debugging non-optimal results
-            # model.writeLP("failed_allocation_model.lp")
+            app.logger.error(f'Solver did not find an optimal solution. Status: {status}')
+            # model.writeLP("failed_allocation_model_endpoint.lp") # Optional: save model for debugging
             return jsonify({'error': f'Solver did not find an optimal solution. Status: {status}'}), 500
 
         # --- Save Results to Database ---
         try:
-            # Start transaction
-            # Clear existing allocations
-            num_deleted = Allocation.query.delete()
-            app.logger.info(f"Cleared {num_deleted} previous allocation entries.")
-            # db.session.flush() # Ensure delete happens before insert if needed by DB constraints
-
-            # Add new allocations
-            for alloc_res in allocation_results:
-                # Ensure keys match the Allocation model fields and solver output dict
-                new_alloc = Allocation(
-                    product_ean=alloc_res['product_sku'], # Solver uses 'product_sku' which is EAN here
-                    channel_id_string=alloc_res['channel_id'], # Solver uses 'channel_id' which is channel_id_string here
-                    quantity=alloc_res['quantity'],
-                    allocation_date=datetime.now()
-                    # Add run_id if AllocationRun is implemented
-                )
-                db.session.add(new_alloc)
-
-            # Optional: Update AllocationRun status
-            # latest_run = AllocationRun.query.order_by(AllocationRun.run_date.desc()).first()
-            # if latest_run:
-            #     latest_run.status = 'COMPLETED' # Or 'OPTIMAL'
-            #     latest_run.completion_date = datetime.now()
-            # else: # Or create a new run entry
-            #     new_run = AllocationRun(status='COMPLETED', run_date=datetime.now())
-            #     db.session.add(new_run)
-
+            with db.session.begin_nested(): # Use nested transaction for safety
+                num_deleted = Allocation.query.delete()
+                app.logger.info(f"Cleared {num_deleted} previous allocation entries.")
+                
+                for alloc_res in allocation_results:
+                    new_alloc = Allocation(
+                        product_ean=str(alloc_res['product_sku']), 
+                        channel_id_string=str(alloc_res['channel_id']), 
+                        quantity=int(alloc_res['quantity']),
+                        allocation_date=datetime.now()
+                    )
+                    db.session.add(new_alloc)
             db.session.commit()
             app.logger.info(f"Successfully saved {len(allocation_results)} new allocation entries.")
-            return jsonify({'message': 'Auto-allocation successful!', 'status': status, 'allocations_created': len(allocation_results)}), 200
+            response_data = {'message': 'Auto-allocation successful!', 'status': status, 'allocations_created': len(allocation_results)}
+            app.logger.info(f"Returning from auto_allocate_endpoint (success): {response_data}")
+            return jsonify(response_data), 200
 
         except Exception as db_error:
             db.session.rollback()
-            app.logger.error(f"Database error saving allocation results: {db_error}")
-            return jsonify({'error': f'Database error saving results: {str(db_error)}'}), 500
+            app.logger.error(f"Database error saving allocation results: {db_error}", exc_info=True)
+            error_response_data = {'error': f'Database error saving results: {str(db_error)}'}
+            app.logger.info(f"Returning from auto_allocate_endpoint (db_error): {error_response_data}")
+            return jsonify(error_response_data), 500
 
-    except ValueError as ve: # Catch errors from parameter/demand loading
-        app.logger.error(f"Value error during auto-allocation setup: {ve}")
-        return jsonify({'error': str(ve)}), 400
+    except FileNotFoundError as fnf_error:
+        app.logger.error(f"Data file not found during auto_allocate_endpoint: {fnf_error}", exc_info=True)
+        error_response_data = {'error': f"A required data file was not found: {str(fnf_error)}"}
+        app.logger.info(f"Returning from auto_allocate_endpoint (fnf_error): {error_response_data}")
+        return jsonify(error_response_data), 500
+    except ValueError as ve: 
+        app.logger.error(f"Value error during auto-allocation setup: {ve}", exc_info=True)
+        error_response_data = {'error': f"Data integrity or configuration error: {str(ve)}"}
+        app.logger.info(f"Returning from auto_allocate_endpoint (value_error): {error_response_data}")
+        return jsonify(error_response_data), 400
     except Exception as e:
-        app.logger.error(f"Unexpected error during auto-allocation: {e}")
-        # Optionally rollback if a transaction was started earlier, though it's safer within the DB block
-        # db.session.rollback()
-        return jsonify({'error': f'An unexpected error occurred: {str(e)}'}), 500
+        app.logger.error(f"Unexpected error during auto-allocation: {e}", exc_info=True)
+        error_response_data = {'error': f'An unexpected error occurred: {str(e)}'}
+        app.logger.info(f"Returning from auto_allocate_endpoint (general_error): {error_response_data}")
+        return jsonify(error_response_data), 500
 
 
 # --- New Endpoint for Saving Manual Allocations ---
@@ -404,206 +388,102 @@ def save_manual_allocations():
 # @jwt_required() # Temporarily disable auth for easier testing if needed
 def get_allocation_data():
     """
-    Fetches and formats allocation data for the new frontend UI.
+    Fetches and formats allocation data for the new frontend UI,
+    loading directly from data files.
     """
     try:
-        # --- Check if initial allocation needs to be run ---
-        allocation_count = Allocation.query.count()
-        if allocation_count == 0:
-            app.logger.info("No existing allocations found. Running initial auto-allocation...")
-            try:
-                # Call the auto-allocation logic directly (or trigger the endpoint internally)
-                # Reusing the logic here to avoid circular requests
-                # 1. Load Data for allocation
-                products_list_alloc = [p.to_dict() for p in Product.query.all()]
-                channels_list_alloc = [c.to_dict() for c in Channel.query.all()]
-                inventory_list_alloc = [i.to_dict() for i in Inventory.query.all()]
+        app.logger.info("Loading allocation data directly from files...")
 
-                if not products_list_alloc or not channels_list_alloc or not inventory_list_alloc:
-                     app.logger.error("Cannot run initial allocation: Missing essential data.")
-                     # Proceed without allocation for now, frontend will show empty state
-                else:
-                    # Create and validate DataFrames for allocation
-                    temp_channels_df_alloc = pd.DataFrame(channels_list_alloc)
-                    # Check for 'id' column (containing channel_id_string)
-                    if 'id' in temp_channels_df_alloc.columns:
-                        # Set index using the 'id' column
-                        channels_df_alloc = temp_channels_df_alloc.set_index('id')
-                    else:
-                        raise ValueError("Initial alloc failed: channel id column missing")
+        # 1. Define file paths
+        masterdata_file_path = os.path.join(app.root_path, 'data', 'InputData', 'masterdata.csv')
+        inventory_file_path = os.path.join(app.root_path, 'data', 'InputData', 'bad_stock_inventory.csv')
+        channellist_file_path = os.path.join(app.root_path, 'data', 'ExcelParameters', 'ChannelList.xlsx')
 
-                    temp_products_df_alloc = pd.DataFrame(products_list_alloc)
-                    if 'ean' in temp_products_df_alloc.columns:
-                        products_df_alloc = temp_products_df_alloc.set_index('ean')
-                    else:
-                          raise ValueError("Initial alloc failed: ean missing")
+        # 2. Load channels
+        channels_df = load_channels_df(channellist_file_path) 
+        if channels_df.empty:
+            app.logger.warning("Channel data is empty. Frontend might not display columns correctly.")
+            channel_ids = []
+        else:
+            channel_ids = channels_df.index.tolist()
 
-                    inventory_df_alloc = pd.DataFrame(inventory_list_alloc)
-                    # Check for 'product_ean' as defined in Inventory.to_dict()
-                    if 'product_ean' not in inventory_df_alloc.columns or 'quantity' not in inventory_df_alloc.columns:
-                         raise ValueError("Initial alloc failed: inventory columns missing")
-                    
-                    # --- Load Data using backend.utils for initial allocation ---
-                    sellout_file_path_alloc = os.path.join(app.root_path, 'data', 'InputData', 'sellout.csv')
-                    demand_dict_alloc = load_demand_dict(
-                        file_path=sellout_file_path_alloc,
-                        ean_col='barcode',
-                        channel_col='store_code',
-                        demand_qty_col='total_items_weekly'
-                    )
-
-                    coverage_file_alloc = os.path.join(app.root_path, 'data', 'ExcelParameters', 'CoverageperABCperChannel.xlsx')
-                    coverage_rules_alloc = load_optimization_rules(
-                        coverage_file_alloc, CoverageDaysRule,
-                        channel_id='channel_id', abc_class='abc_class', coverage_days='coverage_days'
-                    )
-
-                    capacity_file_alloc = os.path.join(app.root_path, 'data', 'ExcelParameters', 'CapacityPerChannel.xlsx')
-                    outlet_capacity_rules_alloc = load_optimization_rules(
-                        capacity_file_alloc, OutletSKUCapacityRule,
-                        channel_id='Channel', division='operational_division', axe='operational_axe_label', max_skus='Max capacity (in # of SKU)'
-                    )
-
-                    assortment_file_alloc = os.path.join(app.root_path, 'data', 'ExcelParameters', 'AssortmentperSubaxeperSignature.xlsx')
-                    outlet_assortment_rules_alloc = load_optimization_rules(
-                        assortment_file_alloc, OutletAssortmentRule,
-                        metier='operational_metier_label', subaxis='operational_sub_axe_label', brand='operational_signature_label', max_skus='max_skus'
-                    )
-
-                    push_new_sku_file_alloc = os.path.join(app.root_path, 'data', 'ExcelParameters', 'PushNewSKU.xlsx')
-                    push_new_sku_rules_alloc = load_optimization_rules(
-                        push_new_sku_file_alloc, PushNewSKURule,
-                        division='operational_division', subaxis='operational_sub_axe_label', push_quantity='Push Quantity if New SKU'
-                    )
-
-                    parameters_alloc = OptimizationParameters(
-                        coverage_days_rules=coverage_rules_alloc,
-                        outlet_sku_capacity_rules=outlet_capacity_rules_alloc,
-                        outlet_assortment_rules=outlet_assortment_rules_alloc,
-                        push_new_sku_rules=push_new_sku_rules_alloc,
-                        restricted_brands_for_donation=['BrandB'] # Example
-                    )
-
-                    instore_stock_file_alloc = os.path.join(app.root_path, 'data', 'InputData', 'in_store_inventory.csv')
-                    intransit_stock_file_alloc = os.path.join(app.root_path, 'data', 'InputData', 'stock_in_transit.csv')
-                    existing_stock_dict_alloc = load_existing_stock_dict(
-                        in_store_fp=instore_stock_file_alloc,
-                        in_transit_fp=intransit_stock_file_alloc
-                    )
-
-                    # Calculate ABC for initial allocation (raw_sellout_df_alloc is loaded from sellout_file_path_alloc)
-                    raw_sellout_df_alloc = pd.read_csv(sellout_file_path_alloc)
-                    all_channel_ids_list_alloc = channels_df_alloc.index.tolist()
-                    product_channel_abc_map_alloc = calculate_abc_classification_and_new_skus(
-                        sellout_df=raw_sellout_df_alloc,
-                        product_master_df=products_df_alloc,
-                        all_channel_ids=all_channel_ids_list_alloc,
-                        sellout_ean_col='barcode',
-                        sellout_channel_col='store_code',
-                        sellout_qty_col='total_items_weekly'
-                    )
-
-                    # 2. Run Solver for initial allocation
-                    model_alloc, status_alloc, allocation_results_alloc = optimize_allocation(
-                        products_df=products_df_alloc,
-                        channels_df=channels_df_alloc,
-                        inventory_df=inventory_df_alloc,
-                        demand_dict=demand_dict_alloc,
-                        parameters=parameters_alloc,
-                        existing_stock_dict=existing_stock_dict_alloc,
-                        product_channel_abc_map=product_channel_abc_map_alloc
-                    )
-                    app.logger.info(f"Initial allocation solver finished with status: {status_alloc}")
-
-                    # 3. Save initial results if optimal
-                    if status_alloc == 'Optimal':
-                        try:
-                            for alloc_res in allocation_results_alloc:
-                                new_alloc = Allocation(
-                                    product_ean=alloc_res['product_sku'],
-                                    channel_id_string=alloc_res['channel_id'],
-                                    quantity=alloc_res['quantity'],
-                                    allocation_date=datetime.now()
-                                )
-                                db.session.add(new_alloc)
-                            db.session.commit()
-                            app.logger.info(f"Successfully saved {len(allocation_results_alloc)} initial allocation entries.")
-                        except Exception as db_err_alloc:
-                            db.session.rollback()
-                            app.logger.error(f"Database error saving initial allocations: {db_err_alloc}")
-                            # Proceed without allocation, frontend will show empty state
-                    else:
-                         app.logger.warning(f"Initial allocation did not find optimal solution (Status: {status_alloc}). Proceeding without initial allocation.")
-
-            except Exception as initial_alloc_err:
-                 app.logger.error(f"Error during initial auto-allocation: {initial_alloc_err}")
-                 # Ensure rollback if any DB operations started but failed
-                 db.session.rollback()
-                 # Proceed without allocation, frontend will show empty state
-
-        # --- Proceed with fetching data for the frontend ---
-        # 1. Get all channels to know the columns needed
-        channels = Channel.query.all()
-        channel_ids = [c.channel_id_string for c in channels]
-
-        # 2. Get all products with their inventory preloaded
-        products = Product.query.options(joinedload(Product.inventories)).all()
-
-        # 3. Get all current allocations (consider filtering by latest run_id if implemented)
-        # For now, fetch all allocations and group them
-        allocations = Allocation.query.all()
-        allocations_by_product_ean = defaultdict(lambda: defaultdict(int))
-        for alloc in allocations:
-            allocations_by_product_ean[alloc.product_ean][alloc.channel_id_string] += alloc.quantity
-
-        # 4. Format data for frontend
-        frontend_data = []
-        for prod in products:
-            total_units = sum(inv.quantity for inv in prod.inventories)
-            # Determine stockOrigin (simplistic: use status of first inventory item)
-            stock_origin = prod.inventories[0].status if prod.inventories else 'Unknown'
-
-            # Get allocated quantities for this product
-            product_allocations = allocations_by_product_ean.get(prod.ean, {})
-
-            # Calculate total allocated and accuracy
-            total_allocated = sum(product_allocations.values())
-            alloc_accu_percent = 0
-            if total_units > 0:
-                # Cap accuracy at 100% in case of over-allocation issues
-                alloc_accu_percent = min(100, round((total_allocated / total_units) * 100))
-            alloc_accu = f"{alloc_accu_percent}%"
-
-            # Build the channel dictionary for the frontend
-            channel_data = {chan_id: product_allocations.get(chan_id, 0) for chan_id in channel_ids}
-
-            frontend_data.append({
-                'id': prod.id, # Use DB id or EAN? Frontend uses a simple counter id. Let's use DB id.
-                'div': prod.division,
-                'signature': prod.brand,
-                'ean': prod.ean,
-                'hierarchy': prod.hierarchy,
-                'photo': prod.photo, # Assuming photo stores filename like 'ap_cuir.jpg'
-                'name': prod.name,
-                'units': total_units,
-                'stockOrigin': stock_origin,
-                'allocAccu': alloc_accu,
-                'channels': channel_data,
-                'cogs': prod.cogs * total_units if prod.cogs and total_units else 0 # Calculate total COGS for the product inventory
+        # 3. Load products
+        products_df = load_products_df(masterdata_file_path) 
+        if products_df.empty:
+            app.logger.warning("Product master data is empty.")
+            return jsonify({
+                "allocationData": [],
+                "channelColumns": channel_ids,
+                "allocationStatus": "Displaying File Data - No Products"
             })
 
-        # Optional: Get overall allocation status (e.g., from latest AllocationRun)
-        latest_run = AllocationRun.query.order_by(AllocationRun.run_date.desc()).first()
-        overall_status = latest_run.status if latest_run else "UNKNOWN"
+        # 4. Load inventory
+        inventory_df = load_inventory_df(inventory_file_path)
+        if inventory_df.empty:
+            app.logger.warning("Inventory data is empty. Product units will be zero.")
+        
+        # 5. Merge product and inventory data
+        if products_df.index.name == 'ean':
+            products_df_to_merge = products_df.reset_index()
+        else: 
+            products_df_to_merge = products_df.copy()
+            if 'ean' not in products_df_to_merge.columns:
+                 app.logger.error("EAN column missing in products_df for merge.")
+                 products_df_to_merge['ean'] = products_df_to_merge.index
+        
+        # Ensure EAN columns are of string type before merging
+        products_df_to_merge['ean'] = products_df_to_merge['ean'].astype(str)
+        inventory_df['product_ean'] = inventory_df['product_ean'].astype(str)
+
+        merged_df = pd.merge(products_df_to_merge, inventory_df, left_on='ean', right_on='product_ean', how='left')
+        merged_df['quantity'] = merged_df['quantity'].fillna(0).astype(int)
+
+        # 6. Format data for frontend
+        frontend_data = []
+        for _, row in merged_df.iterrows():
+            total_units = row.get('quantity', 0)
+            
+            div = row.get('division', 'to come later')
+            signature = row.get('brand', 'to come later') 
+            ean_val = row.get('ean', 'to come later') 
+            
+            hierarchy = "to come later" 
+            photo = "to come later"     
+            name = "to come later"      
+            stock_origin = "to come later" 
+            cogs_value = 2.0
+
+            channel_data = {chan_id: 0 for chan_id in channel_ids}
+
+            frontend_data.append({
+                'id': ean_val, 
+                'div': div,
+                'signature': signature,
+                'ean': ean_val,
+                'hierarchy': hierarchy,
+                'photo': photo,
+                'name': name,
+                'units': total_units,
+                'stockOrigin': stock_origin,
+                'allocAccu': "0%", 
+                'channels': channel_data,
+                'cogs': cogs_value * total_units 
+            })
 
         return jsonify({
             "allocationData": frontend_data,
-            "channelColumns": channel_ids, # Send channel names for dynamic table header
-            "allocationStatus": overall_status
+            "channelColumns": channel_ids,
+            "allocationStatus": "Displaying File Data"
         })
 
+    except FileNotFoundError as fnf_error:
+        app.logger.error(f"Data file not found during /api/allocation_data: {fnf_error}")
+        return jsonify({'error': f"Failed to load data: {str(fnf_error)}"}), 500
+    except ValueError as val_error: 
+        app.logger.error(f"Data loading error during /api/allocation_data: {val_error}")
+        return jsonify({'error': f"Data integrity issue: {str(val_error)}"}), 500
     except Exception as e:
-        app.logger.error(f"Error fetching allocation data: {e}") # Log the error
+        app.logger.error(f"Error fetching allocation data from files: {e}", exc_info=True) 
         return jsonify({'error': f"Failed to fetch allocation data: {str(e)}"}), 500
 
 
@@ -634,27 +514,25 @@ if __name__ == '__main__':
             print("Adding sample data...")
             # Add sample channels (matching frontend example)
             sample_channel_names = ['Outlet', 'Giverny', 'Village', 'Corbeil', 'F&F', 'Liquidation', 'Donation']
-            for name in sample_channel_names:
-                chan_type = 'outlet' if name in ['Outlet', 'Giverny', 'Village', 'Corbeil'] else \
-                            'donation' if name == 'Donation' else \
-                            'liquidation' if name == 'Liquidation' else \
-                            'store' # Default or F&F type? Let's use store for F&F
-                db.session.add(Channel(channel_id_string=name, name=name, channel_type=chan_type, country='FR'))
+            for name_channel in sample_channel_names: # Renamed variable to avoid conflict
+                chan_type = 'outlet' if name_channel in ['Outlet', 'Giverny', 'Village', 'Corbeil'] else \
+                            'donation' if name_channel == 'Donation' else \
+                            'liquidation' if name_channel == 'Liquidation' else \
+                            'store' 
+                db.session.add(Channel(channel_id_string=name_channel, name=name_channel, channel_type=chan_type, country='FR'))
 
             # Add sample products (matching frontend example)
             sample_products_fe = [
                 {'div': 'LLD', 'signature': 'Armani Prive', 'ean': '3614273014588', 'hierarchy': 'Perfumes', 'photo': 'ap_cuir.jpg', 'name': 'AP CUIR AMETHYSTE EDP V50ML', 'units': 500, 'stockOrigin': 'Obs', 'cogs_per_unit': 50},
                 {'div': 'PPD', 'signature': "L'Oreal Professionnel", 'ean': '3474636645800', 'hierarchy': 'Hair Care', 'photo': 'lp_serioxyl.jpg', 'name': 'LP SERIOXYL DENSERHAIR 90ML', 'units': 4500, 'stockOrigin': 'Excess', 'cogs_per_unit': 15},
-                # Add more sample products if needed...
             ]
             for p_data in sample_products_fe:
                 prod = Product(
                     ean=p_data['ean'], name=p_data['name'], brand=p_data['signature'],
                     division=p_data['div'], hierarchy=p_data['hierarchy'], photo=p_data['photo'],
-                    cogs=p_data['cogs_per_unit'] # Store COGS per unit
+                    cogs=p_data['cogs_per_unit'] 
                 )
                 db.session.add(prod)
-                # Add corresponding inventory
                 inv = Inventory(product_ean=p_data['ean'], quantity=p_data['units'], status=p_data['stockOrigin'], country='FR')
                 db.session.add(inv)
 

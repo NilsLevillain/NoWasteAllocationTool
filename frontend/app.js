@@ -896,17 +896,39 @@ document.addEventListener('DOMContentLoaded', () => {
                 // body: JSON.stringify({ filters: { division: divisionFilterDetail.value, ... } })
             });
 
+            const responseText = await response.text(); // Get response as text first
+            console.log("Raw response from /api/auto_allocate:", responseText); // Log raw text
+
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({ message: 'Failed to run auto-allocation.' }));
-                throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+                // Try to parse errorData from responseText if possible, or use a default
+                let errorDetail = `HTTP error! status: ${response.status}`;
+                try {
+                    const errorJson = JSON.parse(responseText);
+                    errorDetail = errorJson.message || errorJson.error || responseText;
+                } catch (e) {
+                    // responseText was not JSON, use it as is or part of it
+                    errorDetail = "Server error: " + responseText.substring(0, 100) + (responseText.length > 100 ? "..." : "");
+                }
+                throw new Error(errorDetail);
             }
 
-            const result = await response.json();
-            console.log("Auto-allocation result:", result);
+            let result;
+            try {
+                result = JSON.parse(responseText); // Now parse the logged text
+            } catch (e) {
+                console.error("Failed to parse responseText as JSON:", e);
+                console.error("Response text that failed parsing:", responseText); 
+                throw new Error("Received non-JSON response from server. Check console for raw response.");
+            }
+            
+            console.log("Parsed JSON result from /api/auto_allocate:", result);
+
 
             // Assuming success means the backend updated the data,
             // so we re-fetch the latest allocation data to refresh the UI
+            console.log("Now attempting to refresh data with fetchAllocationData()...");
             await fetchAllocationData(); // Refresh the entire dataset and UI
+            console.log("fetchAllocationData() completed after auto-allocate.");
 
             // Update button text briefly to show success
             autoAllocateBtn.innerHTML = '<i class="fas fa-check"></i> Allocated!';
@@ -917,7 +939,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
         } catch (error) {
-            console.error('Error during auto-allocation:', error);
+            console.error('Error during auto-allocation:', error.message);
+            if (error.cause) console.error('Cause:', error.cause);
             alert(`Auto-allocation failed: ${error.message}`);
             // Restore button immediately on error
             autoAllocateBtn.innerHTML = originalText.includes("Auto-Allocate") ? originalText : '<i class="fas fa-magic"></i> Auto-Allocate';

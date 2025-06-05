@@ -14,4 +14,7 @@
 ## Current Status
 - Data ingestion and preprocessing layer is now stable and well-tested.
 - Core optimization logic is integrated with the new data loading utilities.
+- `/api/auto_allocate` endpoint now uses file-based data loading for consistency with standalone solver, including a default `seasonality_coefficient`.
+- Added improved diagnostic logging for the auto-allocation feature in `main.py` and `frontend/app.js`.
+- **Current Investigation**: Addressing a "Failed to fetch" error in the frontend when using the auto-allocate feature. Server logs indicate the `/api/auto_allocate` POST is successful, suggesting the issue might be in frontend's handling of the response or a subsequent data refresh call.
 - Ready to proceed with further development on optimization logic and UI, with a solid foundation for data handling.

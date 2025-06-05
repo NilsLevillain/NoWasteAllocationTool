@@ -24,6 +24,9 @@
           - Testing cases written (now specifically for data loading utilities)
 	  - Logger added with warning, info, debug and critical (now specifically for data loading utilities)
 	  - Taking into account input parameters and input data in the problem
+          - Refactored `/api/auto_allocate` endpoint in `main.py` to load all data inputs (products, channels, inventory, rules, etc.) directly from files, mirroring the standalone solver script's data sourcing.
+          - Standardized `seasonality_coefficient` to 1.0 in `auto_allocate_endpoint` for consistent solver behavior.
+          - Enhanced client-side and server-side logging for the auto-allocation process to improve debugging of API communication and data parsing.
                     
 ## Learnings from User Testing
           - Users prefer tabular views with sorting/filtering over purely graphical representations

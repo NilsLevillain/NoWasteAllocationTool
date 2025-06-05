@@ -45,7 +45,9 @@ def _get_channel_id_from_row(row: pd.Series, potential_names: List[str]) -> str:
 
 def load_products_df(file_path: str, ean_col: str = 'product_gtin', brand_col: str = 'operational_signature_label',
                      div_col: str = 'operational_division', axe_col: str = 'operational_axe_label',
-                     sub_col: str = 'operational_sub_axe_label', met_col: str = 'operational_metier_label') -> pd.DataFrame:
+                     sub_col: str = 'operational_sub_axe_label', met_col: str = 'operational_metier_label',
+                     name_col: str = 'product_name', hierarchy_col: str = 'category',
+                     photo_col: str = 'photo_filename', cogs_col: str = 'unit_cost') -> pd.DataFrame:
     logger.info(f"Loading product data from: {file_path}")
     try:
         df = pd.read_csv(file_path)
@@ -59,10 +61,11 @@ def load_products_df(file_path: str, ean_col: str = 'product_gtin', brand_col: s
 
     column_mappings = {
         ean_col: 'ean', brand_col: 'brand', div_col: 'division',
-        axe_col: 'axe', sub_col: 'subaxis', met_col: 'metier'
+        axe_col: 'axe', sub_col: 'subaxis', met_col: 'metier',
+        name_col: 'name', hierarchy_col: 'hierarchy', photo_col: 'photo', cogs_col: 'cogs'
     }
     
-    required_cols = [ean_col]
+    required_cols = [ean_col] # Only EAN is strictly required for the function to operate.
     for col in required_cols:
         if col not in df.columns:
             logger.error(f"Required column '{col}' not found in product master data file: {file_path}. Found columns: {df.columns.tolist()}")
@@ -82,7 +85,10 @@ def load_products_df(file_path: str, ean_col: str = 'product_gtin', brand_col: s
         
     products_df_indexed = pdf.set_index('ean')
     for col in products_df_indexed.columns:
-        products_df_indexed[col] = products_df_indexed[col].fillna('').astype(str)
+        if col == 'cogs':
+            products_df_indexed[col] = pd.to_numeric(products_df_indexed[col], errors='coerce').fillna(0.0)
+        else:
+            products_df_indexed[col] = products_df_indexed[col].fillna('').astype(str)
     logger.info(f"Loaded {len(products_df_indexed)} products from {file_path}.")
     return products_df_indexed
 
