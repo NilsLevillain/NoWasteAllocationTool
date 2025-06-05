@@ -43,11 +43,11 @@ def _get_channel_id_from_row(row: pd.Series, potential_names: List[str]) -> str:
             return str(row[name])
     raise KeyError(f"Could not find channel identifier using names {potential_names}. Found columns: {row.index.tolist()}")
 
-def load_products_df(file_path: str, ean_col: str = 'product_gtin', brand_col: str = 'operational_signature_label',
-                     div_col: str = 'operational_division', axe_col: str = 'operational_axe_label',
-                     sub_col: str = 'operational_sub_axe_label', met_col: str = 'operational_metier_label',
-                     name_col: str = 'product_name', hierarchy_col: str = 'category',
-                     photo_col: str = 'photo_filename', cogs_col: str = 'unit_cost') -> pd.DataFrame:
+def load_products_df(file_path: str, ean_col: str = 'product_gtin', 
+                     div_col: str = 'operational_division', signature_col: str = 'operational_signature_label',
+                     axe_col: str = 'operational_axe_label', sub_axe_col: str = 'operational_sub_axe_label', 
+                     metier_col: str = 'operational_metier_label', sku_col: str = 'internal_product_code', 
+                     description_col: str = 'product_description', cogs_col: str = 'unit_cost') -> pd.DataFrame:
     logger.info(f"Loading product data from: {file_path}")
     try:
         df = pd.read_csv(file_path)
@@ -60,20 +60,30 @@ def load_products_df(file_path: str, ean_col: str = 'product_gtin', brand_col: s
         raise
 
     column_mappings = {
-        ean_col: 'ean', brand_col: 'brand', div_col: 'division',
-        axe_col: 'axe', sub_col: 'subaxis', met_col: 'metier',
-        name_col: 'name', hierarchy_col: 'hierarchy', photo_col: 'photo', cogs_col: 'cogs'
+        ean_col: 'ean', div_col: 'div', signature_col: 'signature',
+        axe_col: 'axe', sub_axe_col: 'subAxe', metier_col: 'metier',
+        sku_col: 'sku', description_col: 'description', cogs_col: 'cogs'
     }
     
-    required_cols = [ean_col] # Only EAN is strictly required for the function to operate.
-    for col in required_cols:
-        if col not in df.columns:
-            logger.error(f"Required column '{col}' not found in product master data file: {file_path}. Found columns: {df.columns.tolist()}")
-            raise ValueError(f"Required column '{col}' not found in product master data file: {file_path}.")
+    # Define which of the input column names are strictly required in the CSV
+    # For example, EAN is essential. Others might be optional.
+    required_input_cols = [ean_col, div_col, signature_col, axe_col, sub_axe_col, metier_col, sku_col, description_col] 
+    # Cogs is often present but let's make it optional for broader compatibility if some files don't have it.
+    
+    for col_name in required_input_cols:
+        if col_name not in df.columns:
+            logger.error(f"Required column '{col_name}' (mapped to '{column_mappings.get(col_name)}') not found in product master data file: {file_path}. Found columns: {df.columns.tolist()}")
+            raise ValueError(f"Required column '{col_name}' not found in product master data file: {file_path}.")
 
-    columns_to_process = [k for k in column_mappings.keys() if k in df.columns]
+    # Select only the columns that are defined in column_mappings AND present in the DataFrame
+    columns_to_process = [csv_col_name for csv_col_name in column_mappings.keys() if csv_col_name in df.columns]
     pdf = df[columns_to_process].copy()
-    pdf.rename(columns=column_mappings, inplace=True)
+    
+    # Rename columns based on the subset that was processed
+    rename_map_for_subset = {csv_col_name: target_name 
+                             for csv_col_name, target_name in column_mappings.items() 
+                             if csv_col_name in columns_to_process}
+    pdf.rename(columns=rename_map_for_subset, inplace=True)
     
     if 'ean' not in pdf.columns:
         logger.error(f"EAN column '{ean_col}' (expected 'ean') not found after renaming in {file_path}.")
@@ -174,7 +184,9 @@ def load_channels_df(file_path: str, sheet_name: str = 'Feuil1', channel_id_col:
     logger.info(f"Loaded {len(channels_df)} channels from {file_path}.")
     return channels_df
 
-def load_inventory_df(file_path: str, ean_col: str = 'ean_code', qty_col: str = 'StockToAllocate', plant_col: str = 'plant') -> pd.DataFrame:
+def load_inventory_df(file_path: str, ean_col: str = 'ean_code', qty_col: str = 'StockToAllocate', 
+                        plant_code_col: str = 'plant', plant_desc_col: str = 'plant_description',
+                        flag6_col: str = 'FlagExcess6months', flag12_col: str = 'FlagExcess12months') -> pd.DataFrame:
     logger.info(f"Loading inventory data from: {file_path}")
     try:
         df = pd.read_csv(file_path)
@@ -185,19 +197,35 @@ def load_inventory_df(file_path: str, ean_col: str = 'ean_code', qty_col: str = 
         logger.error(f"Error reading inventory data file {file_path}: {e}")
         raise
         
-    required_cols = [ean_col, qty_col, plant_col]
+    required_cols = [ean_col, qty_col, plant_code_col, plant_desc_col, flag6_col, flag12_col]
     missing_cols = [col for col in required_cols if col not in df.columns]
     if missing_cols:
         logger.error(f"Required columns {missing_cols} missing in inventory file: {file_path}. Found: {df.columns.tolist()}")
         raise ValueError(f"Required columns {missing_cols} missing in {file_path}")
     
-    idf = df[[ean_col, qty_col, plant_col]].rename(columns={ean_col:'product_ean', qty_col:'quantity', plant_col:'plant'})
+    idf = df[required_cols].rename(columns={
+        ean_col: 'product_ean', 
+        qty_col: 'quantity', 
+        plant_code_col: 'plant', 
+        plant_desc_col: 'stockOrigin',
+        flag6_col: 'flagExcess6months',
+        flag12_col: 'flagExcess12months'
+    })
     idf['product_ean'] = idf['product_ean'].astype(str)
-    idf['plant'] = idf['plant'].astype(str)
+    idf['plant'] = idf['plant'].astype(str) # This is the plant code
+    idf['stockOrigin'] = idf['stockOrigin'].astype(str)
     idf['quantity'] = pd.to_numeric(idf['quantity'], errors='coerce').fillna(0)
+    idf['flagExcess6months'] = pd.to_numeric(idf['flagExcess6months'], errors='coerce').fillna(0).astype(int) # Assuming 0 or 1
+    idf['flagExcess12months'] = pd.to_numeric(idf['flagExcess12months'], errors='coerce').fillna(0).astype(int) # Assuming 0 or 1
     
-    # Group by EAN and Plant, then sum quantities
-    result_df = idf.groupby(['product_ean', 'plant'], as_index=False)['quantity'].sum()
+    # Group by EAN and Plant (code), then aggregate
+    # For flags and description, 'first' is used assuming they are consistent per EAN-Plant group or taking the first is acceptable.
+    result_df = idf.groupby(['product_ean', 'plant'], as_index=False).agg({
+        'quantity': 'sum',
+        'stockOrigin': 'first',
+        'flagExcess6months': 'first',
+        'flagExcess12months': 'first'
+    })
     
     logger.info(f"Loaded inventory for {len(result_df)} EAN-plant combinations from {file_path}. Total quantity: {result_df['quantity'].sum()}")
     return result_df

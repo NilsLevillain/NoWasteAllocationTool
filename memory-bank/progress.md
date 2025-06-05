@@ -17,6 +17,16 @@
         - Revamp the main summary allocation chart to a stacked bar chart showing stock by plant.
         - Improve chart readability and overall UI aesthetics with adjustments to data label colors, chart size, and global font size.
     - Resolved associated JavaScript errors during development, ensuring stable frontend operation.
+- **Enhanced Detailed Allocation Table (June 2025)**:
+    - Updated `frontend/index.html` and `frontend/app.js` to include new columns ('Axe', 'SubAxe', 'Metier', 'SKU', 'Description', 'FlagExcess6months', 'FlagExcess12months') in the detailed allocation table and reordered them as requested.
+    - Modified `backend/utils.py` (`load_products_df`, `load_inventory_df`) and `main.py` (`/api/allocation_data`) to load, process, and serve the data for these new columns.
+- **UI Consistency and Dynamic Remaining Quantity (June 2025)**:
+    - Ensured consistent use of `plant_description` for plant-related display and filtering in `main.py` and `frontend/app.js`.
+    - Implemented live updates for the "Remaining Qty" column in `frontend/app.js` based on user input in allocation channel fields.
+- **Chart Color Palette Customization (June 2025)**:
+    - Implemented a `generateColorShades` helper in `frontend/app.js`.
+    - Applied a yellow-to-green gradient for the "Stock at Risk by Division" and "Stock at Risk by Brand" pie charts.
+    - Applied a distinct professional color palette for the "Stock of EANs Allocated to Channels (by Plant)" bar chart.
 
 ## Remaining Work
 - Continue refinement of the optimization engine constraints and objective function as outlined in `activeContext.md`.

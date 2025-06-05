@@ -435,12 +435,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const staticColumnDefs = [
             { headerText: 'Div', key: 'div' },
             { headerText: 'Signature', key: 'signature' },
+            { headerText: 'Axe', key: 'axe' },
+            { headerText: 'SubAxe', key: 'subAxe' },
+            { headerText: 'Metier', key: 'metier' },
             { headerText: 'EAN', key: 'ean' },
-            { headerText: 'Plant', key: 'plant' }, // New Plant column
-            { headerText: 'Hierarchy', key: 'hierarchy' },
-            { headerText: 'Name', key: 'name' },
+            { headerText: 'SKU', key: 'sku' },
+            { headerText: 'Description', key: 'description' },
             { headerText: 'Units', key: 'units' },
-            { headerText: 'Stock origin', key: 'stockOrigin' },
+            { headerText: 'Plant', key: 'plant' }, // Changed from 'Stock origin', data key is 'plant' (which holds description)
+            { headerText: 'FlagExcess6months', key: 'flagExcess6months' },
+            { headerText: 'FlagExcess12months', key: 'flagExcess12months' },
             { headerText: 'Allocation %', key: 'allocAccu' },
             { headerText: 'Remaining Qty', key: 'remainingQty' }
         ];
@@ -506,13 +510,16 @@ document.addEventListener('DOMContentLoaded', () => {
             // Static columns
             row.insertCell().textContent = item.div || '';
             row.insertCell().textContent = item.signature || '';
+            row.insertCell().textContent = item.axe || '';
+            row.insertCell().textContent = item.subAxe || '';
+            row.insertCell().textContent = item.metier || '';
             row.insertCell().textContent = item.ean || '';
-            row.insertCell().textContent = item.plant || ''; // New Plant cell
-            row.insertCell().textContent = item.hierarchy || '';
-            // Photo cell removed
-            row.insertCell().textContent = item.name || '';
+            row.insertCell().textContent = item.sku || '';
+            row.insertCell().textContent = item.description || '';
             row.insertCell().textContent = (item.units || 0).toLocaleString();
-            row.insertCell().textContent = item.stockOrigin || '';
+            row.insertCell().textContent = item.plant || ''; // Was item.stockOrigin, now item.plant (which holds description)
+            row.insertCell().textContent = item.flagExcess6months || '';
+            row.insertCell().textContent = item.flagExcess12months || '';
             const allocAccuCell = row.insertCell();
             // Calculate total allocated for the item initially
             const totalAllocatedInitial = Object.values(item.channels || {}).reduce((sum, val) => sum + (val || 0), 0);
@@ -555,37 +562,37 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function handleAllocationChange(event) {
         const input = event.target;
-        const id = parseInt(input.dataset.id); // DB ID
+        const rowId = input.closest('tr').dataset.id; // Get the unique row ID (e.g., "ean_plant")
         const channel = input.dataset.channel;
         const value = parseInt(input.value) || 0;
 
         // Update local data state first
-        const item = allocationData.find(item => item.id === id);
+        // Find item by its unique 'id' (ean_plant)
+        const item = allocationData.find(d => d.id === rowId); 
         if (item) {
             if (!item.channels) item.channels = {}; // Ensure channels object exists
             item.channels[channel] = value;
 
-            // Recalculate total allocated and remaining quantity
-            const currentInputs = input.closest('tr').querySelectorAll('input[type="number"]');
-            const currentTotalAllocated = Array.from(currentInputs).reduce((sum, inp) => sum + (parseInt(inp.value) || 0), 0);
-            const currentRemainingQty = (item.units || 0) - currentTotalAllocated;
+            // Recalculate total allocated and remaining quantity for THIS ROW
+            const currentInputsInRow = input.closest('tr').querySelectorAll('input[type="number"]');
+            const currentTotalAllocatedInRow = Array.from(currentInputsInRow).reduce((sum, inp) => sum + (parseInt(inp.value) || 0), 0);
+            const currentRemainingQtyInRow = (item.units || 0) - currentTotalAllocatedInRow;
 
-            // Update local data state
-            item.allocAccu = calculateAllocAccuString(item.units || 0, currentTotalAllocated);
-            item.remainingQty = currentRemainingQty; // Store remaining qty in local state if needed
+            // Update local data state for this specific item
+            item.allocAccu = calculateAllocAccuString(item.units || 0, currentTotalAllocatedInRow);
+            // item.remainingQty = currentRemainingQtyInRow; // Not strictly needed in item state if cell is updated directly
 
-            // Update the specific cells in the DOM
+            // Update the specific cells in the DOM for THIS ROW
             const row = input.closest('tr');
             if (row) {
-                // Adjust cell indices due to new 'Plant' column
-                const accuracyCell = row.cells[8]; // Alloc % cell (index 8, was 7)
-                const remainingQtyCell = row.cells[9]; // Remaining Qty cell (index 9, was 8)
+                const accuracyCell = row.cells[12]; // Alloc % cell index
+                const remainingQtyCell = row.cells[13]; // Remaining Qty cell index
 
                 if (accuracyCell) {
-                    updateAllocAccuCell(accuracyCell, item.units || 0, currentTotalAllocated);
+                    updateAllocAccuCell(accuracyCell, item.units || 0, currentTotalAllocatedInRow);
                 }
                 if (remainingQtyCell) {
-                    updateRemainingQtyCell(remainingQtyCell, currentRemainingQty);
+                    updateRemainingQtyCell(remainingQtyCell, currentRemainingQtyInRow);
                 }
             }
 
@@ -735,27 +742,28 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         Highcharts.chart('allocation-chart', {
-            chart: { type: 'bar', backgroundColor: 'transparent' }, 
-            title: { text: "Stock of EANs Allocated to Channels (by Plant)" }, 
+            chart: { type: 'bar', backgroundColor: 'transparent' },
+            colors: ['#4285F4', '#DB4437', '#F4B400', '#0F9D58', '#AB47BC', '#00ACC1', '#FF7043', '#9E9D24', '#5C6BC0', '#26A69A'], // Distinct professional palette
+            title: { text: "Stock of EANs Allocated to Channels (by Plant)" },
             xAxis: { categories: channelColumns, crosshair: true, labels: { style: { color: getComputedStyle(document.documentElement).getPropertyValue('--text-color') } } },
-            yAxis: { 
-                min: 0, 
-                title: { text: currentMetricView === 'unit' ? 'Total Units' : 'Total COGS (€)', style: { color: getComputedStyle(document.documentElement).getPropertyValue('--text-color') } }, 
-                labels: { style: { color: getComputedStyle(document.documentElement).getPropertyValue('--text-color') } }, 
-                stackLabels: { 
-                    enabled: true, 
-                    style: { 
-                        fontWeight: 'bold', 
-                        color: (Highcharts.defaultOptions.title.style && Highcharts.defaultOptions.title.style.color) || 'gray' 
-                    } 
-                } 
+            yAxis: {
+                min: 0,
+                title: { text: currentMetricView === 'unit' ? 'Total Units' : 'Total COGS (€)', style: { color: getComputedStyle(document.documentElement).getPropertyValue('--text-color') } },
+                labels: { style: { color: getComputedStyle(document.documentElement).getPropertyValue('--text-color') } },
+                stackLabels: {
+                    enabled: true,
+                    style: {
+                        fontWeight: 'bold',
+                        color: (Highcharts.defaultOptions.title.style && Highcharts.defaultOptions.title.style.color) || 'gray'
+                    }
+                }
             },
             tooltip: {
                 headerFormat: '<b>{point.x}</b><br/>',
                 pointFormat: '{series.name}: {point.y:,.0f}<br/>Total: {point.stackTotal:,.0f}'
             },
             plotOptions: {
-                bar: { 
+                bar: {
                     stacking: 'normal',
                     dataLabels: {
                         enabled: true,
@@ -763,7 +771,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             if (this.y > 0) return Highcharts.numberFormat(this.y, 0, '.', ',');
                             return null;
                         },
-                        style: { color: '#000000', textOutline: 'none' } // Changed color to dark gray
+                        style: { color: '#000000', textOutline: 'none' }
                     }
                 }
             },
@@ -784,14 +792,17 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         const chartData = Object.keys(divisionData).map(div => ({ name: div, y: divisionData[div] }));
+        const numDivisions = chartData.length > 0 ? chartData.length : 1; // Ensure at least 1 for generateColorShades
+        const pieColors = generateColorShades('#ffff3f', '#007f5f', numDivisions);
 
         Highcharts.chart('division-chart', {
             chart: { type: 'pie', backgroundColor: 'transparent' },
+            colors: pieColors,
             title: { text: null },
             tooltip: { pointFormat: '{series.name}: <b>{point.y:,.0f} ' + (currentMetricView === 'unit' ? 'units' : '€') + '</b>' },
             accessibility: { point: { valueSuffix: currentMetricView === 'unit' ? 'units' : '€' } },
             plotOptions: { pie: { allowPointSelect: true, cursor: 'pointer', dataLabels: { enabled: true, format: '<b>{point.name}</b>: {point.percentage:.1f} %', style: { color: getComputedStyle(document.documentElement).getPropertyValue('--text-color') } } } },
-            series: [{ name: 'Stock at Risk', colorByPoint: true, data: chartData }], // Updated series name
+            series: [{ name: 'Stock at Risk', data: chartData }],
             credits: { enabled: false }
         });
     }
@@ -810,15 +821,20 @@ document.addEventListener('DOMContentLoaded', () => {
         const chartData = Object.keys(brandData)
             .map(brand => ({ name: brand, y: brandData[brand] }))
             .sort((a, b) => b.y - a.y)
-            .slice(0, 5); // Top 5
+            .slice(0, 10); // Show top 10 brands, or fewer if less than 10
+
+        const numBrands = chartData.length > 0 ? chartData.length : 1; // Ensure at least 1 for generateColorShades
+        const pieColors = generateColorShades('#ffff3f', '#007f5f', numBrands);
+
 
         Highcharts.chart('brand-chart', {
             chart: { type: 'pie', backgroundColor: 'transparent' },
+            colors: pieColors,
             title: { text: null },
             tooltip: { pointFormat: '{series.name}: <b>{point.y:,.0f} ' + (currentMetricView === 'unit' ? 'units' : '€') + '</b>' },
             accessibility: { point: { valueSuffix: currentMetricView === 'unit' ? 'units' : '€' } },
             plotOptions: { pie: { allowPointSelect: true, cursor: 'pointer', dataLabels: { enabled: true, format: '<b>{point.name}</b>: {point.percentage:.1f} %', style: { color: getComputedStyle(document.documentElement).getPropertyValue('--text-color') } } } },
-            series: [{ name: 'Stock at Risk', colorByPoint: true, data: chartData }], // Updated series name
+            series: [{ name: 'Stock at Risk', data: chartData }],
             credits: { enabled: false }
         });
     }
@@ -1127,7 +1143,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const wsData = [];
         // Header row
-        const headerRow = ['Division', 'Brand', 'EAN', 'Plant', 'Category', 'Product Name', 'Total Units', 'Stock Origin', 'Allocation %', 'Remaining Qty']; // Added Plant
+        const headerRow = ['Div', 'Signature', 'Axe', 'SubAxe', 'Metier', 'EAN', 'SKU', 'Description', 'Units', 'Plant', 'FlagExcess6months', 'FlagExcess12months', 'Allocation %', 'Remaining Qty']; // Changed 'Stock origin' to 'Plant'
         channelColumns.forEach(channel => headerRow.push(channel)); // Use dynamic channel columns
         wsData.push(headerRow);
 
@@ -1140,12 +1156,16 @@ document.addEventListener('DOMContentLoaded', () => {
             const row = [
                 item.div || '',
                 item.signature || '',
+                item.axe || '',
+                item.subAxe || '',
+                item.metier || '',
                 item.ean || '',
-                item.plant || '', // Added Plant
-                item.hierarchy || '',
-                item.name || '',
+                item.sku || '',
+                item.description || '',
                 item.units || 0,
-                item.stockOrigin || '',
+                item.plant || '', // Was item.stockOrigin, now item.plant (which holds description)
+                item.flagExcess6months || '',
+                item.flagExcess12months || '',
                 allocPerc, // Use calculated percentage string
                 remainingQty // Add remaining quantity
             ];
@@ -1267,6 +1287,81 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             cell.classList.add('zero-qty');
         }
+    }
+
+    // --- Utility Functions ---
+    function parseAllocAccu(allocAccu) {
+        // Handle potential null or undefined input
+        return parseInt((allocAccu || '0%').replace('%', ''), 10); // Keep this for parsing the string if needed elsewhere
+    }
+
+    // Helper to calculate the allocation percentage string
+    function calculateAllocAccuString(itemUnits, totalAllocated) {
+        let percentage = 0;
+        if (itemUnits > 0) {
+            // Use Math.round and allow over 100%
+            percentage = Math.round((totalAllocated / itemUnits) * 100);
+        } else if (totalAllocated > 0) {
+            percentage = Infinity; // Indicate allocation with zero available units
+        }
+        return `${percentage}%`;
+    }
+
+    // Helper function to update the Allocation % cell content
+    function updateAllocAccuCell(cell, itemUnits, totalAllocated) {
+        const percentageString = calculateAllocAccuString(itemUnits, totalAllocated);
+        cell.textContent = percentageString;
+        // Optional: Add styling based on percentage if needed (e.g., red if > 100)
+        cell.classList.toggle('over-allocated-perc', itemUnits > 0 && totalAllocated > itemUnits);
+    }
+
+    // Helper function to update the Remaining Qty cell content and style
+    function updateRemainingQtyCell(cell, remainingQty) {
+        cell.textContent = remainingQty.toLocaleString();
+        cell.classList.remove('negative-qty', 'positive-qty', 'zero-qty'); // Clear previous classes
+        if (remainingQty < 0) {
+            cell.classList.add('negative-qty');
+        } else if (remainingQty > 0) {
+            cell.classList.add('positive-qty');
+        } else {
+            cell.classList.add('zero-qty');
+        }
+    }
+
+    function parseHexColor(hex) {
+        let r = 0, g = 0, b = 0;
+        if (hex.length === 4) { // #RGB
+            r = parseInt(hex[1] + hex[1], 16);
+            g = parseInt(hex[2] + hex[2], 16);
+            b = parseInt(hex[3] + hex[3], 16);
+        } else if (hex.length === 7) { // #RRGGBB
+            r = parseInt(hex[1] + hex[2], 16);
+            g = parseInt(hex[3] + hex[4], 16);
+            b = parseInt(hex[5] + hex[6], 16);
+        }
+        return [r, g, b];
+    }
+
+    function rgbToHex(r, g, b) {
+        return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
+    }
+
+    function generateColorShades(startColorHex, endColorHex, numShades) {
+        if (numShades <= 0) return [];
+        if (numShades === 1) return [startColorHex];
+
+        const shades = [];
+        const [r1, g1, b1] = parseHexColor(startColorHex);
+        const [r2, g2, b2] = parseHexColor(endColorHex);
+
+        for (let i = 0; i < numShades; i++) {
+            const t = numShades === 1 ? 0.5 : i / (numShades - 1); // Avoid division by zero if numShades is 1
+            const r = Math.round(r1 + t * (r2 - r1));
+            const g = Math.round(g1 + t * (g2 - g1));
+            const b = Math.round(b1 + t * (b2 - b1));
+            shades.push(rgbToHex(r, g, b));
+        }
+        return shades;
     }
 
     // --- Initialize Application ---

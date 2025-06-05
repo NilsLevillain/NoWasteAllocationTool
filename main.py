@@ -418,29 +418,44 @@ def get_allocation_data():
             })
 
         # 4. Load inventory
-        inventory_df = load_inventory_df(inventory_file_path)
+        inventory_df = load_inventory_df(inventory_file_path) # This now loads 'stockOrigin', 'flagExcess6months', 'flagExcess12months'
         if inventory_df.empty:
             app.logger.warning("Inventory data is empty. Product units will be zero.")
         
         # 5. Merge product and inventory data
-        if products_df.index.name == 'ean':
-            products_df_to_merge = products_df.reset_index()
-        else: 
-            products_df_to_merge = products_df.copy()
-            if 'ean' not in products_df_to_merge.columns:
-                 app.logger.error("EAN column missing in products_df for merge.")
-                 products_df_to_merge['ean'] = products_df_to_merge.index
+        # products_df is indexed by 'ean' (string)
+        # inventory_df has 'product_ean' (string) and 'plant' (string)
         
-        # Ensure EAN columns are of string type before merging
+        # Reset index of products_df to make 'ean' a column for merging
+        products_df_to_merge = products_df.reset_index()
+        
+        # Ensure EAN columns are of string type for merging
         products_df_to_merge['ean'] = products_df_to_merge['ean'].astype(str)
         inventory_df['product_ean'] = inventory_df['product_ean'].astype(str)
-        # inventory_df now also contains 'plant' and 'quantity' for each ean-plant combination
         
-        merged_df = pd.merge(products_df_to_merge, inventory_df, left_on='ean', right_on='product_ean', how='left')
-        # 'quantity' in merged_df is now specific to an ean-plant combination
-        # 'plant' column is also present in merged_df
+        # Perform the merge
+        # We expect one row per EAN-Plant combination after this merge
+        merged_df = pd.merge(
+            products_df_to_merge, 
+            inventory_df, 
+            left_on='ean', 
+            right_on='product_ean', 
+            how='left' # Use left merge to keep all products, even if no inventory entry (though unlikely for bad stock)
+        )
+        
+        # Handle cases where there might be no inventory for a product (though for bad stock, this should be rare)
         merged_df['quantity'] = merged_df['quantity'].fillna(0).astype(int)
         merged_df['plant'] = merged_df['plant'].fillna('N/A').astype(str)
+        merged_df['stockOrigin'] = merged_df['stockOrigin'].fillna('N/A').astype(str)
+        merged_df['flagExcess6months'] = merged_df['flagExcess6months'].fillna(0).astype(int)
+        merged_df['flagExcess12months'] = merged_df['flagExcess12months'].fillna(0).astype(int)
+        
+        # Drop the redundant product_ean column from inventory_df if it exists
+        if 'product_ean' in merged_df.columns:
+            merged_df.drop(columns=['product_ean'], inplace=True)
+
+        app.logger.debug(f"Merged DF columns after product and inventory merge: {merged_df.columns.tolist()}")
+        app.logger.debug(f"Sample of merged_df (first 2 rows):\n{merged_df.head(2).to_string()}")
 
 
         # 6. Load current allocations from database
@@ -455,42 +470,59 @@ def get_allocation_data():
         # 7. Format data for frontend
         frontend_data = []
         for _, row in merged_df.iterrows():
-            total_units = row.get('quantity', 0) # This is now quantity for EAN-Plant
+            total_units = row.get('quantity', 0) # This is quantity for EAN-Plant from inventory_df merge
             
-            div = row.get('division', 'to come later')
-            signature = row.get('brand', 'to come later') 
-            ean_val = str(row.get('ean', 'to come later')) 
-            plant_val = str(row.get('plant', 'N/A')) # Get plant value
-            
-            hierarchy = row.get('hierarchy', "to come later") # Use actual hierarchy if available
-            photo = row.get('photo', "to come later")     # Use actual photo if available
-            name = row.get('name', "to come later")      # Use actual name if available
-            stock_origin = "to come later" # This might need to come from inventory file too if it varies by plant/EAN
-            cogs_value = row.get('cogs', 2.0) # Use actual COGS if available in products_df
+            # Get product master data fields
+            div_val = row.get('div', 'N/A') # from products_df
+            signature_val = row.get('signature', 'N/A') # from products_df
+            axe_val = row.get('axe', 'N/A') # from products_df
+            sub_axe_val = row.get('subAxe', 'N/A') # from products_df
+            metier_val = row.get('metier', 'N/A') # from products_df
+            ean_val = str(row.get('ean', 'N/A')) # from products_df (was index, now column)
+            sku_val = row.get('sku', 'N/A') # from products_df
+            description_val = row.get('description', 'N/A') # from products_df
+            cogs_value = row.get('cogs', 0.0) # from products_df, default to 0.0
 
+            # Get inventory specific fields (already merged)
+            # plant_val is the plant CODE from inventory_df merge
+            # stock_origin_val is the plant DESCRIPTION from inventory_df merge (loaded into 'stockOrigin' field by load_inventory_df)
+            plant_code_val = str(row.get('plant', 'N/A')) 
+            plant_description_val = row.get('stockOrigin', 'N/A') 
+            flag6_val = row.get('flagExcess6months', 0) 
+            flag12_val = row.get('flagExcess12months', 0) 
+            
             # Populate channel_data using db_allocations for this ean_val
-            # Allocation is still assumed to be at EAN level, not EAN-Plant level
+            # Allocation is still assumed to be at EAN level for now in the DB model
             product_specific_allocations = allocations_map.get(ean_val, {})
             channel_data = {chan_id: product_specific_allocations.get(chan_id, 0) for chan_id in channel_ids}
             
-            # Create a unique ID for the frontend row, combining EAN and Plant
-            unique_row_id = f"{ean_val}_{plant_val}"
+            # Create a unique ID for the frontend row, combining EAN and Plant CODE
+            unique_row_id = f"{ean_val}_{plant_code_val}"
 
-            frontend_data.append({
-                'id': unique_row_id, # Unique ID for the row
-                'div': div,
-                'signature': signature,
+            item_data = {
+                'id': unique_row_id,
+                'div': div_val,
+                'signature': signature_val,
+                'axe': axe_val,
+                'subAxe': sub_axe_val,
+                'metier': metier_val,
                 'ean': ean_val,
-                'plant': plant_val, # Add plant information
-                'hierarchy': hierarchy,
-                'photo': photo,
-                'name': name,
-                'units': total_units, # Units for this specific EAN-Plant
-                'stockOrigin': stock_origin,
-                'allocAccu': "0%", # Frontend calculates this based on 'channels' and 'units'
-                'channels': channel_data, # Allocations are per EAN
-                'cogs': cogs_value * total_units 
-            })
+                'sku': sku_val,
+                'description': description_val,
+                'units': total_units, 
+                'stockOrigin': plant_description_val, # This is the field for the "Stock origin / Plant Description" column
+                'flagExcess6months': flag6_val,
+                'flagExcess12months': flag12_val,
+                'plant': plant_description_val, # This field is used for filtering and should be the description
+                'plant_code': plant_code_val, # Keep plant code if needed for other logic, but 'plant' for UI is description
+                'allocAccu': "0%", # Frontend calculates this
+                'channels': channel_data,
+                'cogs': cogs_value * total_units # COGS for the total units of this EAN-Plant
+            }
+            frontend_data.append(item_data)
+            if _ == 0: # Log first item for debugging
+                 app.logger.debug(f"First item processed for frontend: {item_data}")
+
 
         allocation_status_message = "Displaying Data with DB Allocations"
         if not db_allocations:
