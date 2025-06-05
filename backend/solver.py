@@ -1,6 +1,17 @@
+# At the top of solver.py
+import os
+import sys
+
+# Check if we're running the file directly
+if __name__ == "__main__":
+    # Running directly - use relative import
+    from schemas import OptimizationParameters, CoverageDaysRule, OutletSKUCapacityRule, OutletAssortmentRule, PushNewSKURule
+else:
+    # Being imported from elsewhere - use absolute import
+    from backend.schemas import OptimizationParameters, CoverageDaysRule, OutletSKUCapacityRule, OutletAssortmentRule, PushNewSKURule
+
 import pulp
 import pandas as pd
-from schemas import OptimizationParameters, CoverageDaysRule, OutletSKUCapacityRule, OutletAssortmentRule, PushNewSKURule
 from collections import defaultdict
 import logging
 import json # For structured logging example

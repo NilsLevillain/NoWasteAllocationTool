@@ -8,7 +8,7 @@ import os # Import os for path joining
 from sqlalchemy.orm import joinedload
 from collections import defaultdict # Import defaultdict
 from backend.models import db, Product, Inventory, Channel, Allocation, User, AllocationRun # Import AllocationRun if used
-from backend.solver import optimize_allocation
+from backend.solver import optimize_allocation, calculate_abc_classification_and_new_skus, load_existing_stock_data # Import necessary functions
 from backend.schemas import OptimizationParameters, CoverageDaysRule, OutletSKUCapacityRule, OutletAssortmentRule # Import parameter schemas
 from backend.config import Config
 
@@ -130,7 +130,7 @@ if __name__ == '__main__':
 
 
 # --- Helper Function to Safely Get Channel ID ---
-def _get_channel_id(row, potential_names=['channel_id_string', 'channel_id', 'Channel ID', 'Channel']):
+def _get_channel_id(row, potential_names=['channel_id_string', 'channel_id', 'Channel ID', 'Channel', 'store_code']):
     """Safely gets the channel ID from a DataFrame row using potential column names."""
     for name in potential_names:
         if name in row.index:
@@ -167,8 +167,8 @@ def load_optimization_parameters():
         outlet_capacity_rules = [
             OutletSKUCapacityRule(
                 channel_id=_get_channel_id(row), # Use helper
-                division=row['division'],
-                axe=row['axe'],
+                division=row['operational_division'],
+                axe=row['operational_axe_label'],
                 max_skus=row['max_skus']
             ) for index, row in outlet_capacity_df.iterrows() # Removed outlet filter for now, apply inside solver if needed based on channel_type from DB
               # if row['channel_type'] == 'outlet' # Filter might cause issues if column missing, handle in solver
@@ -181,9 +181,9 @@ def load_optimization_parameters():
         app.logger.info(f"Assortment file columns: {outlet_assortment_df.columns.tolist()}")
         outlet_assortment_rules = [
             OutletAssortmentRule(
-                metier=row['metier'],
-                subaxis=row['subaxis'],
-                brand=row['brand'],
+                metier=row['operational_metier_label'],
+                subaxis=row['operational_sub_axe_label'],
+                brand=row['operational_signature_label'],
                 max_skus=row['max_skus']
             ) for index, row in outlet_assortment_df.iterrows()
         ]
@@ -228,7 +228,7 @@ def load_demand_dict():
 
         # Find the actual channel ID column name
         channel_col_name = None
-        potential_names = ['channel_id_string', 'channel_id', 'Channel ID', 'Channel']
+        potential_names = ['channel_id_string', 'channel_id', 'Channel ID', 'Channel', 'store_code']
         for name in potential_names:
             if name in sellout_df.columns:
                 channel_col_name = name
@@ -238,13 +238,13 @@ def load_demand_dict():
              raise KeyError(f"Could not find channel identifier column in sellout.csv using names {potential_names}. Found columns: {sellout_df.columns.tolist()}")
 
         # Check for other required columns
-        if 'ean' not in sellout_df.columns:
-             raise KeyError(f"Missing 'ean' column in sellout.csv. Found columns: {sellout_df.columns.tolist()}")
-        if 'weekly_demand' not in sellout_df.columns:
-             raise KeyError(f"Missing 'weekly_demand' column in sellout.csv. Found columns: {sellout_df.columns.tolist()}")
+        if 'barcode' not in sellout_df.columns: # Changed 'ean' to 'barcode'
+             raise KeyError(f"Missing 'barcode' column in sellout.csv. Found columns: {sellout_df.columns.tolist()}")
+        if 'total_items_weekly' not in sellout_df.columns: # Changed 'weekly_demand' to 'total_items_weekly'
+             raise KeyError(f"Missing 'total_items_weekly' column in sellout.csv. Found columns: {sellout_df.columns.tolist()}")
 
         # Convert to dictionary format: {(ean, channel_id): weekly_demand}
-        demand_dict = sellout_df.set_index(['ean', channel_col_name])['weekly_demand'].to_dict()
+        demand_dict = sellout_df.set_index(['barcode', channel_col_name])['total_items_weekly'].to_dict() # Changed column names
         app.logger.info(f"Loaded {len(demand_dict)} demand entries.")
         return demand_dict
     except FileNotFoundError:
@@ -298,12 +298,11 @@ def auto_allocate_endpoint():
              app.logger.error(f"Missing 'ean' column in Product data. Columns found: {temp_products_df.columns.tolist()}")
              return jsonify({'error': "Internal data error: Product EAN missing."}), 500
         # Add checks for other columns needed by solver if necessary
-        required_product_cols = ['brand', 'division', 'axe', 'subaxis', 'metier', 'abc_class']
+        # 'abc_class' is calculated, not expected directly in products_df from DB
+        required_product_cols = ['brand', 'division', 'axe', 'subaxis', 'metier'] 
         for col in required_product_cols:
              if col not in temp_products_df.columns:
                   app.logger.warning(f"Optional product column '{col}' missing. Solver might behave unexpectedly if rules depend on it.")
-                  # Don't fail, but log a warning
-                  # return jsonify({'error': f"Internal data error: Product column '{col}' missing."}), 500
         products_df = temp_products_df.set_index('ean')
 
         # Inventory DataFrame validation
@@ -317,6 +316,28 @@ def auto_allocate_endpoint():
         demand_dict = load_demand_dict()
         parameters = load_optimization_parameters()
 
+        # Load existing stock
+        instore_stock_file = os.path.join(app.root_path, 'data', 'InputData', 'in_store_inventory.csv')
+        intransit_stock_file = os.path.join(app.root_path, 'data', 'InputData', 'stock_in_transit.csv')
+        existing_stock_dict = load_existing_stock_data(instore_stock_file, intransit_stock_file)
+        
+        # Calculate ABC classification
+        sellout_file_path = os.path.join(app.root_path, 'data', 'InputData', 'sellout.csv')
+        raw_sellout_df = pd.read_csv(sellout_file_path)
+        
+        all_channel_ids_list = channels_df.index.tolist()
+
+        # Ensure products_df passed to calculate_abc_classification_and_new_skus is the one set by ean index
+        product_channel_abc_map = calculate_abc_classification_and_new_skus(
+            sellout_df=raw_sellout_df,
+            product_master_df=products_df, # products_df is already indexed by ean
+            all_channel_ids=all_channel_ids_list,
+            sellout_ean_col='barcode', 
+            sellout_channel_col='store_code',
+            sellout_qty_col='total_items_weekly'
+        )
+        app.logger.info(f"Calculated ABC map for {len(product_channel_abc_map)} product-channel pairs.")
+
         # 2. Run Solver
         app.logger.info("Running allocation solver...")
         model, status, allocation_results = optimize_allocation(
@@ -324,7 +345,9 @@ def auto_allocate_endpoint():
             channels_df=channels_df,
             inventory_df=inventory_df,
             demand_dict=demand_dict,
-            parameters=parameters
+            parameters=parameters,
+            existing_stock_dict=existing_stock_dict, # Pass existing_stock_dict
+            product_channel_abc_map=product_channel_abc_map # Pass product_channel_abc_map
         )
         app.logger.info(f"Solver finished with status: {status}")
 
@@ -501,13 +524,33 @@ def get_allocation_data():
                     demand_dict_alloc = load_demand_dict()
                     parameters_alloc = load_optimization_parameters()
 
+                    # Load existing stock for initial allocation
+                    instore_stock_file_alloc = os.path.join(app.root_path, 'data', 'InputData', 'in_store_inventory.csv')
+                    intransit_stock_file_alloc = os.path.join(app.root_path, 'data', 'InputData', 'stock_in_transit.csv')
+                    existing_stock_dict_alloc = load_existing_stock_data(instore_stock_file_alloc, intransit_stock_file_alloc)
+
+                    # Calculate ABC for initial allocation
+                    sellout_file_path_alloc = os.path.join(app.root_path, 'data', 'InputData', 'sellout.csv')
+                    raw_sellout_df_alloc = pd.read_csv(sellout_file_path_alloc)
+                    all_channel_ids_list_alloc = channels_df_alloc.index.tolist()
+                    product_channel_abc_map_alloc = calculate_abc_classification_and_new_skus(
+                        sellout_df=raw_sellout_df_alloc,
+                        product_master_df=products_df_alloc,
+                        all_channel_ids=all_channel_ids_list_alloc,
+                        sellout_ean_col='barcode',
+                        sellout_channel_col='store_code',
+                        sellout_qty_col='total_items_weekly'
+                    )
+
                     # 2. Run Solver for initial allocation
                     model_alloc, status_alloc, allocation_results_alloc = optimize_allocation(
                         products_df=products_df_alloc,
                         channels_df=channels_df_alloc,
                         inventory_df=inventory_df_alloc,
                         demand_dict=demand_dict_alloc,
-                        parameters=parameters_alloc
+                        parameters=parameters_alloc,
+                        existing_stock_dict=existing_stock_dict_alloc,
+                        product_channel_abc_map=product_channel_abc_map_alloc
                     )
                     app.logger.info(f"Initial allocation solver finished with status: {status_alloc}")
 
@@ -608,6 +651,7 @@ def get_allocation_data():
 if __name__ == '__main__':
     with app.app_context():
         # Create tables first if they don't exist
+        db.drop_all()
         db.create_all()
 
         # Ensure a default user exists for testing if the table is empty
