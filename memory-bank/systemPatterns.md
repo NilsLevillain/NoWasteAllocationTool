@@ -55,10 +55,19 @@ The system implements the Observer pattern to notify various components when opt
     - **Consistency**: Standardized data structures (Pandas DataFrames, dictionaries) returned by loading functions.
     - **Maintainability**: Single point of change for data loading logic.
     - **Testability**: Dedicated unit tests for data loading utilities ensure reliability.
-- **File-First Data Sourcing for Endpoints**:
-    - The `/api/allocation_data` endpoint (for displaying data) now loads product, channel, and inventory data directly from files using `backend/utils.py`, bypassing database queries for these entities.
-    - The `/api/auto_allocate` endpoint (for running the solver) also loads all its primary data inputs (products, channels, inventory, rules, demand, existing stock) directly from files via `backend/utils.py`, ensuring consistency with standalone solver execution.
+- **Hybrid Data Sourcing for Frontend Display**:
+    - The `/api/allocation_data` endpoint (responsible for populating the main frontend table) now employs a hybrid approach:
+        - It loads base data such as product master information, channel definitions, and total inventory quantities from files (via `backend/utils.py`).
+        - Crucially, it fetches the actual allocation quantities (product-channel assignments) directly from the `Allocation` table in the database.
+        - This ensures that the frontend always displays the most current allocation results, reflecting outcomes from both automated solver runs and manual adjustments saved to the database.
+- **File-First Data Sourcing for Solver Input**:
+    - The `/api/auto_allocate` endpoint (for running the solver) continues to load all its primary data inputs (products, channels, inventory, rules, demand, existing stock) directly from files via `backend/utils.py`. This maintains consistency with standalone solver execution and allows for easy updates of input parameters through file modifications.
 - **Robust Error Handling**: Data loading utilities include specific error handling for file not found, missing columns, and data parsing issues, with integrated logging.
+- **Enhanced API Debugging and Frontend Robustness**:
+    - Server-side logging in `main.py` for the `/api/auto_allocate` endpoint includes details of the data being prepared for the JSON response.
+    - Client-side logic in `frontend/app.js` for the `autoAllocate` function has been improved:
+        - It now ensures that UI data is refreshed by calling `fetchAllocationData` (which hits `/api/allocation_data`) after an auto-allocation attempt, regardless of whether the direct response from `/api/auto_allocate` was successfully received by the client.
+        - This resolves previous issues where a "Failed to fetch" alert might appear while the underlying server operation succeeded and data was updated in the database. The UI now more reliably reflects the database state.
 
 ## Error Handling Patterns
 - Input validation errors are caught early and presented to users for correction

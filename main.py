@@ -389,10 +389,10 @@ def save_manual_allocations():
 def get_allocation_data():
     """
     Fetches and formats allocation data for the new frontend UI,
-    loading directly from data files.
+    loading product/channel/inventory from files and allocations from the database.
     """
     try:
-        app.logger.info("Loading allocation data directly from files...")
+        app.logger.info("Loading base data from files and allocations from DB for /api/allocation_data...")
 
         # 1. Define file paths
         masterdata_file_path = os.path.join(app.root_path, 'data', 'InputData', 'masterdata.csv')
@@ -438,25 +438,37 @@ def get_allocation_data():
         merged_df = pd.merge(products_df_to_merge, inventory_df, left_on='ean', right_on='product_ean', how='left')
         merged_df['quantity'] = merged_df['quantity'].fillna(0).astype(int)
 
-        # 6. Format data for frontend
+        # 6. Load current allocations from database
+        app.logger.info("Fetching allocations from database...")
+        db_allocations = Allocation.query.all()
+        allocations_map = defaultdict(lambda: defaultdict(int))
+        for alloc in db_allocations:
+            allocations_map[alloc.product_ean][alloc.channel_id_string] = alloc.quantity
+        
+        app.logger.info(f"Loaded {len(db_allocations)} allocation records from DB, mapped to {len(allocations_map)} EANs.")
+
+        # 7. Format data for frontend
         frontend_data = []
         for _, row in merged_df.iterrows():
             total_units = row.get('quantity', 0)
             
             div = row.get('division', 'to come later')
             signature = row.get('brand', 'to come later') 
-            ean_val = row.get('ean', 'to come later') 
+            ean_val = str(row.get('ean', 'to come later')) # Ensure ean_val is string for lookup
             
             hierarchy = "to come later" 
             photo = "to come later"     
             name = "to come later"      
             stock_origin = "to come later" 
-            cogs_value = 2.0
+            cogs_value = 2.0 # Placeholder, consider if this should be dynamic
 
-            channel_data = {chan_id: 0 for chan_id in channel_ids}
-
+            # Populate channel_data using db_allocations for this ean_val
+            # Initialize with all known channels from channel_ids, defaulting to 0
+            product_specific_allocations = allocations_map.get(ean_val, {})
+            channel_data = {chan_id: product_specific_allocations.get(chan_id, 0) for chan_id in channel_ids}
+            
             frontend_data.append({
-                'id': ean_val, 
+                'id': ean_val, # This should be the EAN, used as data-id in frontend
                 'div': div,
                 'signature': signature,
                 'ean': ean_val,
@@ -465,15 +477,21 @@ def get_allocation_data():
                 'name': name,
                 'units': total_units,
                 'stockOrigin': stock_origin,
-                'allocAccu': "0%", 
-                'channels': channel_data,
-                'cogs': cogs_value * total_units 
+                'allocAccu': "0%", # Frontend calculates this based on 'channels' and 'units'
+                'channels': channel_data, # Populated with DB allocations
+                'cogs': cogs_value * total_units # Placeholder
             })
+
+        allocation_status_message = "Displaying Data with DB Allocations"
+        if not db_allocations:
+            allocation_status_message = "Displaying Data (No Allocations in DB)"
+        
+        app.logger.info(f"Prepared {len(frontend_data)} items for frontend. Status: {allocation_status_message}")
 
         return jsonify({
             "allocationData": frontend_data,
             "channelColumns": channel_ids,
-            "allocationStatus": "Displaying File Data"
+            "allocationStatus": allocation_status_message
         })
 
     except FileNotFoundError as fnf_error:

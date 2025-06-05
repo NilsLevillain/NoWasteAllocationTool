@@ -27,6 +27,8 @@
           - Refactored `/api/auto_allocate` endpoint in `main.py` to load all data inputs (products, channels, inventory, rules, etc.) directly from files, mirroring the standalone solver script's data sourcing.
           - Standardized `seasonality_coefficient` to 1.0 in `auto_allocate_endpoint` for consistent solver behavior.
           - Enhanced client-side and server-side logging for the auto-allocation process to improve debugging of API communication and data parsing.
+          - **Corrected Auto-Allocation Data Flow**: Modified the `/api/allocation_data` endpoint in `main.py` to fetch allocation results directly from the database. This ensures the frontend table accurately reflects the allocations made by the `auto_allocate_endpoint`.
+          - **Improved Frontend Auto-Allocation Logic**: Refined the `autoAllocate` function in `frontend/app.js` to robustly handle the response from `/api/auto_allocate`. It now ensures that `fetchAllocationData` is always called to refresh the UI with the latest database state, and provides clearer error reporting for the auto-allocation process, resolving the "Failed to fetch" alert while ensuring data consistency.
                     
 ## Learnings from User Testing
           - Users prefer tabular views with sorting/filtering over purely graphical representations

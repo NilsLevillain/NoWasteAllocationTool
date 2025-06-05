@@ -884,6 +884,10 @@ document.addEventListener('DOMContentLoaded', () => {
         autoAllocateBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Allocating...';
         autoAllocateBtn.disabled = true;
 
+        let fetchErrorOccurred = false;
+        let fetchErrorMessage = '';
+        let directCallSuccessful = false;
+
         try {
             // Call the backend endpoint to trigger the solver
             const response = await fetch('http://127.0.0.1:5000/api/auto_allocate', {
@@ -896,56 +900,73 @@ document.addEventListener('DOMContentLoaded', () => {
                 // body: JSON.stringify({ filters: { division: divisionFilterDetail.value, ... } })
             });
 
-            const responseText = await response.text(); // Get response as text first
-            console.log("Raw response from /api/auto_allocate:", responseText); // Log raw text
+            const responseText = await response.text(); 
+            console.log("Raw response from /api/auto_allocate:", responseText); 
 
             if (!response.ok) {
-                // Try to parse errorData from responseText if possible, or use a default
                 let errorDetail = `HTTP error! status: ${response.status}`;
                 try {
                     const errorJson = JSON.parse(responseText);
                     errorDetail = errorJson.message || errorJson.error || responseText;
                 } catch (e) {
-                    // responseText was not JSON, use it as is or part of it
-                    errorDetail = "Server error: " + responseText.substring(0, 100) + (responseText.length > 100 ? "..." : "");
+                    errorDetail = "Server error (non-JSON response): " + responseText.substring(0, 100) + (responseText.length > 100 ? "..." : "");
                 }
-                throw new Error(errorDetail);
+                throw new Error(errorDetail); // This error will be caught by the catch block below
             }
 
-            let result;
-            try {
-                result = JSON.parse(responseText); // Now parse the logged text
-            } catch (e) {
-                console.error("Failed to parse responseText as JSON:", e);
-                console.error("Response text that failed parsing:", responseText); 
-                throw new Error("Received non-JSON response from server. Check console for raw response.");
-            }
-            
-            console.log("Parsed JSON result from /api/auto_allocate:", result);
-
-
-            // Assuming success means the backend updated the data,
-            // so we re-fetch the latest allocation data to refresh the UI
-            console.log("Now attempting to refresh data with fetchAllocationData()...");
-            await fetchAllocationData(); // Refresh the entire dataset and UI
-            console.log("fetchAllocationData() completed after auto-allocate.");
-
-            // Update button text briefly to show success
-            autoAllocateBtn.innerHTML = '<i class="fas fa-check"></i> Allocated!';
-            setTimeout(() => {
-                 autoAllocateBtn.innerHTML = originalText.includes("Auto-Allocate") ? originalText : '<i class="fas fa-magic"></i> Auto-Allocate';
-                 autoAllocateBtn.disabled = false;
-            }, 1500);
-
+            // Try to parse to ensure it's valid JSON
+            JSON.parse(responseText); 
+            console.log("Successfully received and parsed response from /api/auto_allocate.");
+            directCallSuccessful = true; // Mark the direct API call as successful
 
         } catch (error) {
-            console.error('Error during auto-allocation:', error.message);
+            // This catch block handles:
+            // 1. "Failed to fetch" from the fetch() call itself.
+            // 2. Errors thrown if !response.ok.
+            // 3. Errors thrown if JSON.parse(responseText) fails.
+            fetchErrorOccurred = true;
+            fetchErrorMessage = error.message;
+            console.error('Error during /api/auto_allocate call or response processing:', fetchErrorMessage);
             if (error.cause) console.error('Cause:', error.cause);
-            alert(`Auto-allocation failed: ${error.message}`);
-            // Restore button immediately on error
-            autoAllocateBtn.innerHTML = originalText.includes("Auto-Allocate") ? originalText : '<i class="fas fa-magic"></i> Auto-Allocate';
-            autoAllocateBtn.disabled = false;
         }
+
+        // Always attempt to refresh data from /api/allocation_data,
+        // as the server-side allocation might have completed even if fetching its direct response failed.
+        console.log("Now attempting to refresh data with fetchAllocationData() regardless of prior fetch outcome...");
+        try {
+            await fetchAllocationData(); // Refresh the entire dataset and UI
+            console.log("fetchAllocationData() completed after auto-allocate attempt.");
+        } catch (refreshError) {
+            console.error("Error during subsequent fetchAllocationData():", refreshError.message);
+            if (!fetchErrorOccurred) { // If auto_allocate call was fine, but refresh failed
+                fetchErrorOccurred = true; // Mark that an error occurred in the overall process
+                fetchErrorMessage = `Data refresh failed after allocation: ${refreshError.message}`;
+            } else {
+                // Append refresh error information if auto_allocate already failed
+                fetchErrorMessage += ` | Additionally, data refresh failed: ${refreshError.message}`;
+            }
+        }
+        
+        if (fetchErrorOccurred) {
+            alert(`Auto-allocation process encountered an issue: ${fetchErrorMessage}`);
+        } else if (directCallSuccessful) {
+            // Only show "Allocated!" if the direct /api/auto_allocate call was successful AND no subsequent refresh error
+            autoAllocateBtn.innerHTML = '<i class="fas fa-check"></i> Allocated!';
+        }
+
+        // Restore button text and enable it after a delay.
+        // The button text will show "Allocated!" only if directCallSuccessful and no fetchErrorOccurred.
+        // Otherwise, it reverts to original text.
+        setTimeout(() => {
+             if (directCallSuccessful && !fetchErrorOccurred) {
+                 // Keep "Allocated!" for a bit then revert
+                 autoAllocateBtn.innerHTML = originalText.includes("Auto-Allocate") ? originalText : '<i class="fas fa-magic"></i> Auto-Allocate';
+             } else {
+                 // If there was any error, or direct call wasn't marked successful, revert directly
+                 autoAllocateBtn.innerHTML = originalText.includes("Auto-Allocate") ? originalText : '<i class="fas fa-magic"></i> Auto-Allocate';
+             }
+             autoAllocateBtn.disabled = false;
+        }, (directCallSuccessful && !fetchErrorOccurred) ? 1500 : 500); // Shorter delay if error or reverting without success message
     }
 
     async function validateAllocation() {
