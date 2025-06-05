@@ -49,6 +49,14 @@ The system uses a Service-oriented architecture pattern to separate the optimiza
 
 The system implements the Observer pattern to notify various components when optimization results are available.
 
+## Data Access Patterns
+- **Centralized Data Utilities**: Data loading from various sources (CSV, Excel) is centralized in `backend/utils.py`. This promotes:
+    - **Reusability**: Common functions for loading products, channels, inventory, demand, and optimization rules.
+    - **Consistency**: Standardized data structures (Pandas DataFrames, dictionaries) returned by loading functions.
+    - **Maintainability**: Single point of change for data loading logic.
+    - **Testability**: Dedicated unit tests for data loading utilities ensure reliability.
+- **Robust Error Handling**: Data loading utilities include specific error handling for file not found, missing columns, and data parsing issues, with integrated logging.
+
 ## Error Handling Patterns
 - Input validation errors are caught early and presented to users for correction
 - Optimization errors (infeasible solutions, etc.) are handled gracefully with explanations

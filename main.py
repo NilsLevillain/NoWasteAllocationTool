@@ -17,7 +17,7 @@ from backend.utils import (
 )
 
 app = Flask(__name__)
-p.cfg.object(Cnfig)
+app.config.from_object(Config)
 
 CORS(app)
 db.init_app(app)
