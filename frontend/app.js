@@ -236,8 +236,15 @@ document.addEventListener('DOMContentLoaded', () => {
             renderBrandChart(filtered);
             updateSummaryMetrics(filtered);
             renderAllocationLegend(filtered);
+            
+            if (validationErrors) {
+                validationErrors.classList.add('hidden'); 
+                console.log('fetchAllocationData: validationErrors explicitly hidden before table render.'); // LOGGING
+            }
             renderAllocationTable(); // Render table with initial data
-            if (validationErrors) validationErrors.classList.add('hidden'); // Ensure banner is hidden initially
+            if (validationErrors) {
+                console.log(`fetchAllocationData: After renderAllocationTable, validationErrors hidden: ${validationErrors.classList.contains('hidden')}`); // LOGGING
+            }
 
             // Determine and set the initial detailed status after rendering
             updateAllocationStatus();
@@ -568,10 +575,21 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function validateInput(input) {
-        const id = parseInt(input.dataset.id); // DB ID
-        const item = allocationData.find(item => item.id === id);
+        console.log('--- validateInput entered. Input object:', input); // NEW TOP LOG
+        if (!input || !input.dataset) {
+            console.error('validateInput: Received invalid input object or input.dataset is undefined.');
+            return true; // Exit if input is not as expected
+        }
+        console.log(`validateInput: allocationData length: ${allocationData ? allocationData.length : 'undefined'}. Sample:`, allocationData ? allocationData.slice(0,1) : 'N/A'); // NEW LOG
 
-        if (!item) return true; // Cannot validate if item not found
+        const idFromDataset = input.dataset.id; // This is a string
+        // Find the item using string comparison, similar to validateAllInputs
+        const item = allocationData.find(itemL => String(itemL.id) === idFromDataset);
+
+        if (!item) {
+            console.log(`validateInput: Item not found for idFromDataset = ${idFromDataset}. allocationData checked.`); // MODIFIED LOG
+            return true; // Cannot validate if item not found
+        }
 
         const row = input.closest('tr');
         if (!row) return true; // Cannot validate if row not found
@@ -582,9 +600,11 @@ document.addEventListener('DOMContentLoaded', () => {
         inputs.forEach(inp => {
             totalAllocated += parseInt(inp.value) || 0;
         });
+        console.log(`validateInput for item ID ${item?.id}: item.units = ${item?.units}, calculated totalAllocated from inputs = ${totalAllocated}`); // LOGGING
 
         const itemUnits = item.units || 0;
         const isOverAllocated = itemUnits > 0 && totalAllocated > itemUnits; // Check only for over-allocation
+        console.log(`validateInput for item ID ${item?.id}: isOverAllocated = ${isOverAllocated}`); // LOGGING
 
         // Update input styling for all inputs in the row based *only* on over-allocation
         inputs.forEach(inp => {
@@ -596,6 +616,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const anyOverAllocatedRows = document.querySelectorAll('.allocation-table input.error').length > 0;
         if (validationErrors) {
             validationErrors.classList.toggle('hidden', !anyOverAllocatedRows); // Hide if NO over-allocation errors
+            console.log(`validateInput for item ID ${item?.id}: validationErrors hidden: ${validationErrors.classList.contains('hidden')}`); // LOGGING
             if (anyOverAllocatedRows && errorMessage) {
                 errorMessage.textContent = 'Total allocation exceeds available units for some products.';
             } else if (!anyOverAllocatedRows && errorMessage) {
@@ -608,23 +629,36 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function validateAllInputs() {
+        console.log('validateAllInputs: Called'); // LOGGING
         const inputs = document.querySelectorAll('.allocation-table input[type="number"]');
+        console.log(`validateAllInputs: Found ${inputs.length} input elements to validate.`); // LOGGING
         const validatedIds = new Set();
         let allValid = true;
 
         inputs.forEach(input => {
-            const id = parseInt(input.dataset.id);
-            if (!validatedIds.has(id)) {
-                validatedIds.add(id);
-                // Find the item corresponding to this input's row
-                 const item = allocationData.find(item => item.id === id);
+            const idFromDataset = input.dataset.id; // Keep as string
+            // Attempt to use validatedIds with the string form of ID.
+            // If item.id in allocationData can be numeric, this Set might store mixed types if not careful.
+            // For now, let's assume we process based on the string ID from dataset.
+            if (!validatedIds.has(idFromDataset)) { // Use string ID for validatedIds check
+                validatedIds.add(idFromDataset);
+                console.log(`validateAllInputs: Processing idFromDataset = ${idFromDataset}`); // LOGGING
+                // Find the item corresponding to this input's row by comparing string versions of IDs
+                 const item = allocationData.find(itemL => String(itemL.id) === idFromDataset);
                  if (item) {
+                    console.log(`validateAllInputs: Found item for idFromDataset = ${idFromDataset}`, item); // LOGGING
                      // Find one input in the row to trigger validation for the whole row
-                     const rowInput = document.querySelector(`.allocation-table tr[data-id="${id}"] input[type="number"]`);
+                     // Ensure querySelector uses the string ID from dataset correctly
+                     const rowInput = document.querySelector(`.allocation-table tr[data-id="${idFromDataset}"] input[type="number"]`);
                      if (rowInput) {
+                        console.log(`validateAllInputs: Found rowInput for idFromDataset = ${idFromDataset}`, rowInput); // LOGGING
                          const isValid = validateInput(rowInput); // Validate using one input from the row
                          if (!isValid) allValid = false;
+                     } else {
+                        console.log(`validateAllInputs: Did NOT find rowInput for idFromDataset = ${idFromDataset}`); // LOGGING
                      }
+                 } else {
+                    console.log(`validateAllInputs: Did NOT find item in allocationData for idFromDataset = ${idFromDataset}`); // LOGGING
                  }
             }
         });
