@@ -434,9 +434,14 @@ def get_allocation_data():
         # Ensure EAN columns are of string type before merging
         products_df_to_merge['ean'] = products_df_to_merge['ean'].astype(str)
         inventory_df['product_ean'] = inventory_df['product_ean'].astype(str)
-
+        # inventory_df now also contains 'plant' and 'quantity' for each ean-plant combination
+        
         merged_df = pd.merge(products_df_to_merge, inventory_df, left_on='ean', right_on='product_ean', how='left')
+        # 'quantity' in merged_df is now specific to an ean-plant combination
+        # 'plant' column is also present in merged_df
         merged_df['quantity'] = merged_df['quantity'].fillna(0).astype(int)
+        merged_df['plant'] = merged_df['plant'].fillna('N/A').astype(str)
+
 
         # 6. Load current allocations from database
         app.logger.info("Fetching allocations from database...")
@@ -450,36 +455,41 @@ def get_allocation_data():
         # 7. Format data for frontend
         frontend_data = []
         for _, row in merged_df.iterrows():
-            total_units = row.get('quantity', 0)
+            total_units = row.get('quantity', 0) # This is now quantity for EAN-Plant
             
             div = row.get('division', 'to come later')
             signature = row.get('brand', 'to come later') 
-            ean_val = str(row.get('ean', 'to come later')) # Ensure ean_val is string for lookup
+            ean_val = str(row.get('ean', 'to come later')) 
+            plant_val = str(row.get('plant', 'N/A')) # Get plant value
             
-            hierarchy = "to come later" 
-            photo = "to come later"     
-            name = "to come later"      
-            stock_origin = "to come later" 
-            cogs_value = 2.0 # Placeholder, consider if this should be dynamic
+            hierarchy = row.get('hierarchy', "to come later") # Use actual hierarchy if available
+            photo = row.get('photo', "to come later")     # Use actual photo if available
+            name = row.get('name', "to come later")      # Use actual name if available
+            stock_origin = "to come later" # This might need to come from inventory file too if it varies by plant/EAN
+            cogs_value = row.get('cogs', 2.0) # Use actual COGS if available in products_df
 
             # Populate channel_data using db_allocations for this ean_val
-            # Initialize with all known channels from channel_ids, defaulting to 0
+            # Allocation is still assumed to be at EAN level, not EAN-Plant level
             product_specific_allocations = allocations_map.get(ean_val, {})
             channel_data = {chan_id: product_specific_allocations.get(chan_id, 0) for chan_id in channel_ids}
             
+            # Create a unique ID for the frontend row, combining EAN and Plant
+            unique_row_id = f"{ean_val}_{plant_val}"
+
             frontend_data.append({
-                'id': ean_val, # This should be the EAN, used as data-id in frontend
+                'id': unique_row_id, # Unique ID for the row
                 'div': div,
                 'signature': signature,
                 'ean': ean_val,
+                'plant': plant_val, # Add plant information
                 'hierarchy': hierarchy,
                 'photo': photo,
                 'name': name,
-                'units': total_units,
+                'units': total_units, # Units for this specific EAN-Plant
                 'stockOrigin': stock_origin,
                 'allocAccu': "0%", # Frontend calculates this based on 'channels' and 'units'
-                'channels': channel_data, # Populated with DB allocations
-                'cogs': cogs_value * total_units # Placeholder
+                'channels': channel_data, # Allocations are per EAN
+                'cogs': cogs_value * total_units 
             })
 
         allocation_status_message = "Displaying Data with DB Allocations"

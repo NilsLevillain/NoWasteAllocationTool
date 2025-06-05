@@ -8,6 +8,15 @@
 - **Fixed Auto-Allocation Display**: Modified `main.py` (`/api/allocation_data`) to fetch allocations from the database, ensuring the frontend table and charts correctly display results after an auto-allocation run.
 - **Resolved Frontend "Failed to Fetch" for Auto-Allocate**: Updated `frontend/app.js` (`autoAllocate` function) to ensure UI data is refreshed consistently and to correctly handle the `/api/auto_allocate` response, eliminating the erroneous "Failed to fetch" alert while ensuring data integrity.
 - **Corrected Validation Error Display**: Fixed the issue where the `div#validation-errors` on the "Edit Allocation" page was always showing. The problem was resolved by ensuring consistent type comparison (string-based) for item IDs within the `validateAllInputs` and `validateInput` functions in `frontend/app.js`. This ensures the validation banner and message now correctly appear only when actual allocation errors are present.
+- **Plant Data Integration and UI Enhancements (June 2025)**:
+    - Successfully integrated "plant" information throughout the application.
+    - Backend (`utils.py`, `main.py`) updated to load and serve plant-specific inventory data.
+    - Frontend (`app.js`, `index.html`, `style.css`) updated to:
+        - Display a "Plant" column in the "Edit Allocation" table.
+        - Include "Plant" filters in both summary and detailed views.
+        - Revamp the main summary allocation chart to a stacked bar chart showing stock by plant.
+        - Improve chart readability and overall UI aesthetics with adjustments to data label colors, chart size, and global font size.
+    - Resolved associated JavaScript errors during development, ensuring stable frontend operation.
 
 ## Remaining Work
 - Continue refinement of the optimization engine constraints and objective function as outlined in `activeContext.md`.

@@ -26,6 +26,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const divisionFilterDetail = document.getElementById('division-filter-detail');
     const brandFilterDetail = document.getElementById('brand-filter-detail');
     const categoryFilterDetail = document.getElementById('category-filter-detail');
+    const plantFilterSummary = document.getElementById('plant-filter-summary'); // New
+    const plantFilterDetail = document.getElementById('plant-filter-detail'); // New
 
     // Metric toggles
     const unitToggle = document.getElementById('unit-toggle');
@@ -166,21 +168,25 @@ document.addEventListener('DOMContentLoaded', () => {
         if (runButton) runButton.addEventListener('click', runAllocation); // Keep if old form exists
 
         // Filter change handlers
-        [divisionFilterSummary, brandFilterSummary, categoryFilterSummary].forEach(filter => {
-            filter.addEventListener('change', () => {
-                const filtered = filterData(); // Apply filters first
-                renderAllocationChart(filtered); // Pass filtered data to render functions
-                renderDivisionChart(filtered);
-                renderBrandChart(filtered);
-                updateSummaryMetrics(filtered);
-                renderAllocationLegend(filtered);
-            });
+        [divisionFilterSummary, brandFilterSummary, categoryFilterSummary, plantFilterSummary].forEach(filter => {
+            if (filter) { // Add null check
+                filter.addEventListener('change', () => {
+                    const filtered = filterData(); // Apply filters first
+                    renderAllocationChart(filtered); // Pass filtered data to render functions
+                    renderDivisionChart(filtered);
+                    renderBrandChart(filtered);
+                    updateSummaryMetrics(filtered);
+                    renderAllocationLegend(filtered);
+                });
+            }
         });
 
-        [divisionFilterDetail, brandFilterDetail, categoryFilterDetail].forEach(filter => {
-            filter.addEventListener('change', () => {
-                renderAllocationTable(); // Re-render table with new filters applied
-            });
+        [divisionFilterDetail, brandFilterDetail, categoryFilterDetail, plantFilterDetail].forEach(filter => {
+            if (filter) { // Add null check
+                filter.addEventListener('change', () => {
+                    renderAllocationTable(); // Re-render table with new filters applied
+                });
+            }
         });
     }
 
@@ -283,6 +289,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const divisions = [...new Set(allocationData.map(item => item.div).filter(Boolean))];
         const brands = [...new Set(allocationData.map(item => item.signature).filter(Boolean))];
         const categories = [...new Set(allocationData.map(item => item.hierarchy).filter(Boolean))];
+        const plants = [...new Set(allocationData.map(item => item.plant).filter(Boolean))]; // New
 
         // Populate division filters
         populateFilterOptions(divisionFilterSummary, divisions);
@@ -295,6 +302,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // Populate category filters
         populateFilterOptions(categoryFilterSummary, categories);
         populateFilterOptions(categoryFilterDetail, categories);
+
+        // Populate plant filters
+        populateFilterOptions(plantFilterSummary, plants);
+        populateFilterOptions(plantFilterDetail, plants);
     }
 
     function populateFilterOptions(selectElement, options) {
@@ -316,9 +327,17 @@ document.addEventListener('DOMContentLoaded', () => {
     function filterData() {
         // Get filter values from the currently visible view
         const isDetailView = !detailedView.classList.contains('hidden');
-        const divisionFilter = (isDetailView ? divisionFilterDetail.value : divisionFilterSummary.value) || 'all';
-        const brandFilter = (isDetailView ? brandFilterDetail.value : brandFilterSummary.value) || 'all';
-        const categoryFilter = (isDetailView ? categoryFilterDetail.value : categoryFilterSummary.value) || 'all';
+        
+        const divisionFilterValue = isDetailView ? divisionFilterDetail?.value : divisionFilterSummary?.value;
+        const brandFilterValue = isDetailView ? brandFilterDetail?.value : brandFilterSummary?.value;
+        const categoryFilterValue = isDetailView ? categoryFilterDetail?.value : categoryFilterSummary?.value;
+        const plantFilterValue = isDetailView ? plantFilterDetail?.value : plantFilterSummary?.value; // New
+
+        const divisionFilter = divisionFilterValue || 'all';
+        const brandFilter = brandFilterValue || 'all';
+        const categoryFilter = categoryFilterValue || 'all';
+        const plantFilter = plantFilterValue || 'all'; // New
+
 
         // Apply filters
         let filteredData = [...allocationData];
@@ -333,6 +352,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (categoryFilter !== 'all') {
             filteredData = filteredData.filter(item => item.hierarchy === categoryFilter);
+        }
+
+        if (plantFilter !== 'all') { // New
+            filteredData = filteredData.filter(item => item.plant === plantFilter);
         }
 
         return filteredData;
@@ -413,12 +436,13 @@ document.addEventListener('DOMContentLoaded', () => {
             { headerText: 'Div', key: 'div' },
             { headerText: 'Signature', key: 'signature' },
             { headerText: 'EAN', key: 'ean' },
+            { headerText: 'Plant', key: 'plant' }, // New Plant column
             { headerText: 'Hierarchy', key: 'hierarchy' },
             { headerText: 'Name', key: 'name' },
             { headerText: 'Units', key: 'units' },
             { headerText: 'Stock origin', key: 'stockOrigin' },
             { headerText: 'Allocation %', key: 'allocAccu' },
-            { headerText: 'Remaining Qty', key: 'remainingQty' } // Added column definition
+            { headerText: 'Remaining Qty', key: 'remainingQty' }
         ];
 
         // Add sort listeners to static headers
@@ -483,6 +507,7 @@ document.addEventListener('DOMContentLoaded', () => {
             row.insertCell().textContent = item.div || '';
             row.insertCell().textContent = item.signature || '';
             row.insertCell().textContent = item.ean || '';
+            row.insertCell().textContent = item.plant || ''; // New Plant cell
             row.insertCell().textContent = item.hierarchy || '';
             // Photo cell removed
             row.insertCell().textContent = item.name || '';
@@ -552,8 +577,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // Update the specific cells in the DOM
             const row = input.closest('tr');
             if (row) {
-                const accuracyCell = row.cells[7]; // Alloc % cell (index 7)
-                const remainingQtyCell = row.cells[8]; // Remaining Qty cell (index 8)
+                // Adjust cell indices due to new 'Plant' column
+                const accuracyCell = row.cells[8]; // Alloc % cell (index 8, was 7)
+                const remainingQtyCell = row.cells[9]; // Remaining Qty cell (index 9, was 8)
 
                 if (accuracyCell) {
                     updateAllocAccuCell(accuracyCell, item.units || 0, currentTotalAllocated);
@@ -668,49 +694,80 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderAllocationChart(data = filterData()) { // Accept optional data
         if (!allocationChartContainer || !Highcharts) return;
 
-        // Calculate totals for each channel based on the current metric view
-        const channelTotals = {};
-        let grandTotal = 0;
+        const uniquePlants = [...new Set(data.map(item => item.plant).filter(Boolean))].sort();
+        const plantChannelTotals = {}; // { plant1: { channelA: total, channelB: total }, plant2: { ... } }
 
-        channelColumns.forEach(channel => { channelTotals[channel] = 0; });
-
-        data.forEach(item => {
-            const unitValue = item.units || 0;
-            const cogsValue = item.cogs || 0; // Total COGS for product inventory from API
-            const cogsPerUnit = unitValue > 0 ? cogsValue / unitValue : 0;
-
+        uniquePlants.forEach(plant => {
+            plantChannelTotals[plant] = {};
             channelColumns.forEach(channel => {
-                const allocatedUnits = item.channels?.[channel] || 0;
-                const value = currentMetricView === 'unit'
-                    ? allocatedUnits
-                    : allocatedUnits * cogsPerUnit;
-                channelTotals[channel] += value;
+                plantChannelTotals[plant][channel] = 0;
             });
         });
-        grandTotal = Object.values(channelTotals).reduce((sum, val) => sum + val, 0);
 
-        const chartData = channelColumns.map(channel => {
-            const percentage = grandTotal > 0 ? (channelTotals[channel] / grandTotal) * 100 : 0;
+        data.forEach(item => {
+            const plant = item.plant;
+            if (!plant || !uniquePlants.includes(plant)) return; // Skip if plant is undefined or not in uniquePlants
+
+            const unitValue = item.units || 0; 
+            const cogsValue = item.cogs || 0; 
+            const cogsPerUnit = unitValue > 0 ? cogsValue / unitValue : 0; // Ensure this is uncommented and used if needed, or remove if not. For now, keep it.
+
+            // The logic for `value_for_metric` determines what the chart bars represent.
+            // Current interpretation: "Total stock (by plant) of EANs that are allocated to a given channel".
+            // This means we sum `item.units` (or `item.cogs`) for EAN-Plant items where the EAN is allocated to the channel.
+            const value_for_metric = currentMetricView === 'unit' ? item.units : item.cogs;
+
+            channelColumns.forEach(channel => {
+                // Check if the EAN of the current item (which is EAN-Plant specific)
+                // has any allocation to the current channel.
+                // `item.channels` is an object like { channelName: allocatedQtyForEAN, ... }
+                if (item.channels?.[channel] && item.channels[channel] > 0) { 
+                    plantChannelTotals[plant][channel] += value_for_metric; 
+                }
+            });
+        });
+
+        const series = uniquePlants.map(plant => {
             return {
-                name: channel,
-                y: parseFloat(percentage.toFixed(1)),
-                value: channelTotals[channel]
+                name: plant,
+                data: channelColumns.map(channel => plantChannelTotals[plant][channel] || 0)
             };
         });
 
-        const colors = { /* ... colors ... */
-             'Outlet': '#7CB5EC', 'F&F': '#F7DC6F', 'Liquidation': '#D3D3D3',
-             'Donation': '#F8C471', 'Giverny': '#5DADE2', 'Village': '#F4D03F', 'Corbeil': '#A569BD'
-        };
-
         Highcharts.chart('allocation-chart', {
-            chart: { type: 'column', backgroundColor: 'transparent' },
-            title: { text: null },
+            chart: { type: 'bar', backgroundColor: 'transparent' }, 
+            title: { text: "Stock of EANs Allocated to Channels (by Plant)" }, 
             xAxis: { categories: channelColumns, crosshair: true, labels: { style: { color: getComputedStyle(document.documentElement).getPropertyValue('--text-color') } } },
-            yAxis: { min: 0, max: 100, title: { text: '%', style: { color: getComputedStyle(document.documentElement).getPropertyValue('--text-color') } }, labels: { style: { color: getComputedStyle(document.documentElement).getPropertyValue('--text-color') } } },
-            tooltip: { headerFormat: '<span style="font-size:10px">{point.key}</span><table>', pointFormat: '<tr><td style="padding:0"><b>{point.y:.1f}%</b></td></tr><tr><td style="padding:0">{point.value:,.0f} ' + (currentMetricView === 'unit' ? 'units' : '€') + '</td></tr>', footerFormat: '</table>', shared: true, useHTML: true },
-            plotOptions: { column: { pointPadding: 0.2, borderWidth: 0 } },
-            series: [{ name: 'Allocation', showInLegend: false, data: chartData.map(point => ({ y: point.y, value: point.value, color: colors[point.name] || '#7CB5EC' })) }],
+            yAxis: { 
+                min: 0, 
+                title: { text: currentMetricView === 'unit' ? 'Total Units' : 'Total COGS (€)', style: { color: getComputedStyle(document.documentElement).getPropertyValue('--text-color') } }, 
+                labels: { style: { color: getComputedStyle(document.documentElement).getPropertyValue('--text-color') } }, 
+                stackLabels: { 
+                    enabled: true, 
+                    style: { 
+                        fontWeight: 'bold', 
+                        color: (Highcharts.defaultOptions.title.style && Highcharts.defaultOptions.title.style.color) || 'gray' 
+                    } 
+                } 
+            },
+            tooltip: {
+                headerFormat: '<b>{point.x}</b><br/>',
+                pointFormat: '{series.name}: {point.y:,.0f}<br/>Total: {point.stackTotal:,.0f}'
+            },
+            plotOptions: {
+                bar: { 
+                    stacking: 'normal',
+                    dataLabels: {
+                        enabled: true,
+                        formatter: function() {
+                            if (this.y > 0) return Highcharts.numberFormat(this.y, 0, '.', ',');
+                            return null;
+                        },
+                        style: { color: '#000000', textOutline: 'none' } // Changed color to dark gray
+                    }
+                }
+            },
+            series: series,
             credits: { enabled: false }
         });
     }
@@ -1070,7 +1127,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const wsData = [];
         // Header row
-        const headerRow = ['Division', 'Brand', 'EAN', 'Category', 'Product Name', 'Total Units', 'Stock Origin', 'Allocation %', 'Remaining Qty']; // Updated header
+        const headerRow = ['Division', 'Brand', 'EAN', 'Plant', 'Category', 'Product Name', 'Total Units', 'Stock Origin', 'Allocation %', 'Remaining Qty']; // Added Plant
         channelColumns.forEach(channel => headerRow.push(channel)); // Use dynamic channel columns
         wsData.push(headerRow);
 
@@ -1084,6 +1141,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 item.div || '',
                 item.signature || '',
                 item.ean || '',
+                item.plant || '', // Added Plant
                 item.hierarchy || '',
                 item.name || '',
                 item.units || 0,

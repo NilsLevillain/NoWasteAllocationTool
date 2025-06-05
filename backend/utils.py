@@ -174,7 +174,7 @@ def load_channels_df(file_path: str, sheet_name: str = 'Feuil1', channel_id_col:
     logger.info(f"Loaded {len(channels_df)} channels from {file_path}.")
     return channels_df
 
-def load_inventory_df(file_path: str, ean_col: str = 'ean_code', qty_col: str = 'StockToAllocate') -> pd.DataFrame:
+def load_inventory_df(file_path: str, ean_col: str = 'ean_code', qty_col: str = 'StockToAllocate', plant_col: str = 'plant') -> pd.DataFrame:
     logger.info(f"Loading inventory data from: {file_path}")
     try:
         df = pd.read_csv(file_path)
@@ -185,15 +185,21 @@ def load_inventory_df(file_path: str, ean_col: str = 'ean_code', qty_col: str = 
         logger.error(f"Error reading inventory data file {file_path}: {e}")
         raise
         
-    if ean_col not in df.columns or qty_col not in df.columns:
-        logger.error(f"Required columns ('{ean_col}', '{qty_col}') missing in inventory file: {file_path}. Found: {df.columns.tolist()}")
-        raise ValueError(f"Required columns missing in {file_path}")
+    required_cols = [ean_col, qty_col, plant_col]
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    if missing_cols:
+        logger.error(f"Required columns {missing_cols} missing in inventory file: {file_path}. Found: {df.columns.tolist()}")
+        raise ValueError(f"Required columns {missing_cols} missing in {file_path}")
     
-    idf = df[[ean_col, qty_col]].rename(columns={ean_col:'product_ean', qty_col:'quantity'})
+    idf = df[[ean_col, qty_col, plant_col]].rename(columns={ean_col:'product_ean', qty_col:'quantity', plant_col:'plant'})
     idf['product_ean'] = idf['product_ean'].astype(str)
+    idf['plant'] = idf['plant'].astype(str)
     idf['quantity'] = pd.to_numeric(idf['quantity'], errors='coerce').fillna(0)
-    result_df = idf.groupby('product_ean', as_index=False)['quantity'].sum()
-    logger.info(f"Loaded inventory for {len(result_df)} EANs from {file_path}. Total quantity: {result_df['quantity'].sum()}")
+    
+    # Group by EAN and Plant, then sum quantities
+    result_df = idf.groupby(['product_ean', 'plant'], as_index=False)['quantity'].sum()
+    
+    logger.info(f"Loaded inventory for {len(result_df)} EAN-plant combinations from {file_path}. Total quantity: {result_df['quantity'].sum()}")
     return result_df
 
 def load_existing_stock_dict(in_store_fp: str, in_transit_fp: str,

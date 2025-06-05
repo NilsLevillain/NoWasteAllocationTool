@@ -30,6 +30,14 @@
           - **Corrected Auto-Allocation Data Flow**: Modified the `/api/allocation_data` endpoint in `main.py` to fetch allocation results directly from the database. This ensures the frontend table accurately reflects the allocations made by the `auto_allocate_endpoint`.
           - **Improved Frontend Auto-Allocation Logic**: Refined the `autoAllocate` function in `frontend/app.js` to robustly handle the response from `/api/auto_allocate`. It now ensures that `fetchAllocationData` is always called to refresh the UI with the latest database state, and provides clearer error reporting for the auto-allocation process, resolving the "Failed to fetch" alert while ensuring data consistency.
           - **Fixed Frontend Validation Banner**: Resolved an issue in `frontend/app.js` where the validation error banner on the "Edit Allocation" page was always displayed. Corrected ID type mismatches in `validateAllInputs` and `validateInput` functions by ensuring consistent string-based comparisons, so the banner now accurately reflects the presence of allocation errors.
+          - **Integrated Plant Data into UI (June 2025)**:
+            - Modified `backend/utils.py` (`load_inventory_df`) to load "plant" data from inventory CSV and group by EAN-Plant.
+            - Updated `/api/allocation_data` in `main.py` to provide plant-specific data to the frontend, including a composite ID for EAN-Plant rows.
+            - Added "Plant" column to the detailed allocation table in `frontend/app.js` and `frontend/index.html`.
+            - Implemented "Plant" filters in both summary and detailed views (JS logic and HTML structure in `frontend/app.js` and `frontend/index.html`).
+            - Transformed the main allocation chart on the summary page into a horizontal stacked bar chart, displaying "Stock of EANs Allocated to Channels (by Plant)".
+            - Adjusted chart data label colors for better readability, increased main chart height, and slightly increased global font size via CSS.
+            - Resolved JavaScript syntax errors in `frontend/app.js` related to Highcharts configuration during development.
                     
 ## Learnings from User Testing
           - Users prefer tabular views with sorting/filtering over purely graphical representations
