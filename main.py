@@ -8,12 +8,16 @@ import os # Import os for path joining
 from sqlalchemy.orm import joinedload
 from collections import defaultdict # Import defaultdict
 from backend.models import db, Product, Inventory, Channel, Allocation, User, AllocationRun # Import AllocationRun if used
-from backend.solver import optimize_allocation, calculate_abc_classification_and_new_skus, load_existing_stock_data # Import necessary functions
-from backend.schemas import OptimizationParameters, CoverageDaysRule, OutletSKUCapacityRule, OutletAssortmentRule # Import parameter schemas
+from backend.solver import optimize_allocation, calculate_abc_classification_and_new_skus # Import necessary functions
+from backend.schemas import OptimizationParameters, CoverageDaysRule, OutletSKUCapacityRule, OutletAssortmentRule, PushNewSKURule # Import parameter schemas
 from backend.config import Config
+from backend.utils import (
+    load_products_df, load_channels_df, load_inventory_df, load_demand_dict,
+    load_existing_stock_dict, load_optimization_rules, _get_channel_id_from_row
+)
 
 app = Flask(__name__)
-app.config.from_object(Config)
+p.cfg.object(Cnfig)
 
 CORS(app)
 db.init_app(app)
@@ -128,137 +132,6 @@ if __name__ == '__main__':
             db.session.commit()
             print("Created default user: testuser / password (stored insecurely)")
 
-
-# --- Helper Function to Safely Get Channel ID ---
-def _get_channel_id(row, potential_names=['channel_id_string', 'channel_id', 'Channel ID', 'Channel', 'store_code']):
-    """Safely gets the channel ID from a DataFrame row using potential column names."""
-    for name in potential_names:
-        if name in row.index:
-            return row[name]
-    # If none found, raise an error indicating the missing column and available columns
-    raise KeyError(f"Could not find channel identifier using names {potential_names}. Found columns: {row.index.tolist()}")
-
-# --- Helper Function to Load Parameters ---
-def load_optimization_parameters():
-    """Loads optimization parameters from Excel files using paths relative to app root."""
-    # Construct paths relative to app.root_path
-    coverage_file = os.path.join(app.root_path, 'data', 'ExcelParameters', 'CoverageperABCperChannel.xlsx')
-    capacity_file = os.path.join(app.root_path, 'data', 'ExcelParameters', 'CapacityPerChannel.xlsx')
-    assortment_file = os.path.join(app.root_path, 'data', 'ExcelParameters', 'AssortmentperSubaxeperSignature.xlsx')
-
-    try:
-        # Coverage Rules - Use helper function
-        app.logger.info(f"Loading coverage rules from: {coverage_file}")
-        coverage_df = pd.read_excel(coverage_file)
-        app.logger.info(f"Coverage file columns: {coverage_df.columns.tolist()}")
-        coverage_rules = [
-            CoverageDaysRule(
-                channel_id=_get_channel_id(row), # Use helper
-                abc_class=row['abc_class'],
-                coverage_days=row['coverage_days']
-            ) for index, row in coverage_df.iterrows()
-        ]
-        app.logger.info(f"Loaded {len(coverage_rules)} coverage rules.")
-
-        # Outlet SKU Capacity Rules - Use helper function
-        app.logger.info(f"Loading capacity rules from: {capacity_file}")
-        outlet_capacity_df = pd.read_excel(capacity_file)
-        app.logger.info(f"Capacity file columns: {outlet_capacity_df.columns.tolist()}")
-        outlet_capacity_rules = [
-            OutletSKUCapacityRule(
-                channel_id=_get_channel_id(row), # Use helper
-                division=row['operational_division'],
-                axe=row['operational_axe_label'],
-                max_skus=row['max_skus']
-            ) for index, row in outlet_capacity_df.iterrows() # Removed outlet filter for now, apply inside solver if needed based on channel_type from DB
-              # if row['channel_type'] == 'outlet' # Filter might cause issues if column missing, handle in solver
-        ]
-        app.logger.info(f"Loaded {len(outlet_capacity_rules)} outlet capacity rules.")
-
-        # Outlet Assortment Rules - Assumes correct columns exist
-        app.logger.info(f"Loading assortment rules from: {assortment_file}")
-        outlet_assortment_df = pd.read_excel(assortment_file)
-        app.logger.info(f"Assortment file columns: {outlet_assortment_df.columns.tolist()}")
-        outlet_assortment_rules = [
-            OutletAssortmentRule(
-                metier=row['operational_metier_label'],
-                subaxis=row['operational_sub_axe_label'],
-                brand=row['operational_signature_label'],
-                max_skus=row['max_skus']
-            ) for index, row in outlet_assortment_df.iterrows()
-        ]
-        app.logger.info(f"Loaded {len(outlet_assortment_rules)} assortment rules.")
-
-        # Restricted Brands (Hardcoded for now)
-        restricted_brands = ['BrandB'] # Example
-
-        return OptimizationParameters(
-            coverage_days_rules=coverage_rules,
-            outlet_sku_capacity_rules=outlet_capacity_rules,
-            outlet_assortment_rules=outlet_assortment_rules,
-            restricted_brands_for_donation=restricted_brands
-        )
-    except FileNotFoundError as e:
-        app.logger.error(f"Parameter file not found: {e.filename}")
-        raise ValueError(f"Parameter file missing: {e.filename}")
-    except KeyError as e: # Catch specific KeyError from _get_channel_id or direct access
-        app.logger.error(f"Error loading parameters: Missing expected column '{e}' in one of the Excel files.")
-        # The error message from _get_channel_id already includes details
-        if "Could not find channel identifier" in str(e):
-             raise ValueError(f"Error parsing parameter files: {str(e)}")
-        else: # General KeyError
-             raise ValueError(f"Error parsing parameter files: Missing column '{e}'")
-    except Exception as e:
-        app.logger.error(f"Error loading parameters: {e}")
-        # Include original exception type and message for better debugging
-        raise ValueError(f"Error parsing parameter files: {type(e).__name__} - {str(e)}")
-
-
-# --- Helper Function to Load Demand ---
-def load_demand_dict():
-    """Loads demand data from sellout.csv and formats it using paths relative to app root."""
-    sellout_df = None # Initialize in case of early error
-    # Construct path relative to app.root_path
-    sellout_path = os.path.join(app.root_path, 'data', 'InputData', 'sellout.csv')
-
-    try:
-        app.logger.info(f"Loading demand data from: {sellout_path}")
-        sellout_df = pd.read_csv(sellout_path)
-        app.logger.info(f"Demand file columns: {sellout_df.columns.tolist()}")
-
-        # Find the actual channel ID column name
-        channel_col_name = None
-        potential_names = ['channel_id_string', 'channel_id', 'Channel ID', 'Channel', 'store_code']
-        for name in potential_names:
-            if name in sellout_df.columns:
-                channel_col_name = name
-                break
-        
-        if not channel_col_name:
-             raise KeyError(f"Could not find channel identifier column in sellout.csv using names {potential_names}. Found columns: {sellout_df.columns.tolist()}")
-
-        # Check for other required columns
-        if 'barcode' not in sellout_df.columns: # Changed 'ean' to 'barcode'
-             raise KeyError(f"Missing 'barcode' column in sellout.csv. Found columns: {sellout_df.columns.tolist()}")
-        if 'total_items_weekly' not in sellout_df.columns: # Changed 'weekly_demand' to 'total_items_weekly'
-             raise KeyError(f"Missing 'total_items_weekly' column in sellout.csv. Found columns: {sellout_df.columns.tolist()}")
-
-        # Convert to dictionary format: {(ean, channel_id): weekly_demand}
-        demand_dict = sellout_df.set_index(['barcode', channel_col_name])['total_items_weekly'].to_dict() # Changed column names
-        app.logger.info(f"Loaded {len(demand_dict)} demand entries.")
-        return demand_dict
-    except FileNotFoundError:
-        app.logger.warning("sellout.csv not found, using empty demand dictionary.")
-        return {}
-    except KeyError as e:
-        # Log the specific KeyError message (which now includes details about missing channel ID or other columns)
-        app.logger.error(f"Error loading demand data: {str(e)}")
-        raise ValueError(f"Error parsing demand file: {str(e)}")
-    except Exception as e:
-        app.logger.error(f"Error loading demand data: {type(e).__name__} - {str(e)}")
-        return {} # Return empty on other errors
-
-
 # --- New Endpoint for Auto-Allocation ---
 @app.route('/api/auto_allocate', methods=['POST'])
 # @jwt_required() # Add authentication if needed
@@ -313,15 +186,64 @@ def auto_allocate_endpoint():
              return jsonify({'error': "Internal data error: Inventory columns missing."}), 500
 
 
-        demand_dict = load_demand_dict()
-        parameters = load_optimization_parameters()
+        # --- Load Data using backend.utils ---
+        sellout_file_path = os.path.join(app.root_path, 'data', 'InputData', 'sellout.csv')
+        demand_dict = load_demand_dict(
+            file_path=sellout_file_path,
+            ean_col='barcode',
+            channel_col='store_code',
+            demand_qty_col='total_items_weekly'
+        )
 
-        # Load existing stock
+        coverage_file = os.path.join(app.root_path, 'data', 'ExcelParameters', 'CoverageperABCperChannel.xlsx')
+        coverage_rules = load_optimization_rules(
+            coverage_file, CoverageDaysRule,
+            channel_id='channel_id', abc_class='abc_class', coverage_days='coverage_days'
+        )
+
+        capacity_file = os.path.join(app.root_path, 'data', 'ExcelParameters', 'CapacityPerChannel.xlsx')
+        outlet_capacity_rules = load_optimization_rules(
+            capacity_file, OutletSKUCapacityRule,
+            channel_id='Channel',  # Note: Column name from original file
+            division='operational_division',
+            axe='operational_axe_label',
+            max_skus='Max capacity (in # of SKU)' # Note: Column name from original file
+        )
+
+        assortment_file = os.path.join(app.root_path, 'data', 'ExcelParameters', 'AssortmentperSubaxeperSignature.xlsx')
+        outlet_assortment_rules = load_optimization_rules(
+            assortment_file, OutletAssortmentRule,
+            metier='operational_metier_label',
+            subaxis='operational_sub_axe_label',
+            brand='operational_signature_label',
+            max_skus='max_skus'
+        )
+        
+        push_new_sku_file = os.path.join(app.root_path, 'data', 'ExcelParameters', 'PushNewSKU.xlsx')
+        push_new_sku_rules = load_optimization_rules(
+            push_new_sku_file, PushNewSKURule,
+            division='operational_division',
+            subaxis='operational_sub_axe_label',
+            push_quantity='Push Quantity if New SKU'
+        )
+
+        parameters = OptimizationParameters(
+            coverage_days_rules=coverage_rules,
+            outlet_sku_capacity_rules=outlet_capacity_rules,
+            outlet_assortment_rules=outlet_assortment_rules,
+            push_new_sku_rules=push_new_sku_rules, # Added push_new_sku_rules
+            restricted_brands_for_donation=['BrandB'] # Example, can be configured
+        )
+
         instore_stock_file = os.path.join(app.root_path, 'data', 'InputData', 'in_store_inventory.csv')
         intransit_stock_file = os.path.join(app.root_path, 'data', 'InputData', 'stock_in_transit.csv')
-        existing_stock_dict = load_existing_stock_data(instore_stock_file, intransit_stock_file)
+        existing_stock_dict = load_existing_stock_dict(
+            in_store_fp=instore_stock_file,
+            in_transit_fp=intransit_stock_file
+            # Default column names in load_existing_stock_dict match the CSVs
+        )
         
-        # Calculate ABC classification
+        # Calculate ABC classification (raw_sellout_df is loaded from sellout_file_path)
         sellout_file_path = os.path.join(app.root_path, 'data', 'InputData', 'sellout.csv')
         raw_sellout_df = pd.read_csv(sellout_file_path)
         
@@ -520,17 +442,56 @@ def get_allocation_data():
                     # Check for 'product_ean' as defined in Inventory.to_dict()
                     if 'product_ean' not in inventory_df_alloc.columns or 'quantity' not in inventory_df_alloc.columns:
                          raise ValueError("Initial alloc failed: inventory columns missing")
+                    
+                    # --- Load Data using backend.utils for initial allocation ---
+                    sellout_file_path_alloc = os.path.join(app.root_path, 'data', 'InputData', 'sellout.csv')
+                    demand_dict_alloc = load_demand_dict(
+                        file_path=sellout_file_path_alloc,
+                        ean_col='barcode',
+                        channel_col='store_code',
+                        demand_qty_col='total_items_weekly'
+                    )
 
-                    demand_dict_alloc = load_demand_dict()
-                    parameters_alloc = load_optimization_parameters()
+                    coverage_file_alloc = os.path.join(app.root_path, 'data', 'ExcelParameters', 'CoverageperABCperChannel.xlsx')
+                    coverage_rules_alloc = load_optimization_rules(
+                        coverage_file_alloc, CoverageDaysRule,
+                        channel_id='channel_id', abc_class='abc_class', coverage_days='coverage_days'
+                    )
 
-                    # Load existing stock for initial allocation
+                    capacity_file_alloc = os.path.join(app.root_path, 'data', 'ExcelParameters', 'CapacityPerChannel.xlsx')
+                    outlet_capacity_rules_alloc = load_optimization_rules(
+                        capacity_file_alloc, OutletSKUCapacityRule,
+                        channel_id='Channel', division='operational_division', axe='operational_axe_label', max_skus='Max capacity (in # of SKU)'
+                    )
+
+                    assortment_file_alloc = os.path.join(app.root_path, 'data', 'ExcelParameters', 'AssortmentperSubaxeperSignature.xlsx')
+                    outlet_assortment_rules_alloc = load_optimization_rules(
+                        assortment_file_alloc, OutletAssortmentRule,
+                        metier='operational_metier_label', subaxis='operational_sub_axe_label', brand='operational_signature_label', max_skus='max_skus'
+                    )
+
+                    push_new_sku_file_alloc = os.path.join(app.root_path, 'data', 'ExcelParameters', 'PushNewSKU.xlsx')
+                    push_new_sku_rules_alloc = load_optimization_rules(
+                        push_new_sku_file_alloc, PushNewSKURule,
+                        division='operational_division', subaxis='operational_sub_axe_label', push_quantity='Push Quantity if New SKU'
+                    )
+
+                    parameters_alloc = OptimizationParameters(
+                        coverage_days_rules=coverage_rules_alloc,
+                        outlet_sku_capacity_rules=outlet_capacity_rules_alloc,
+                        outlet_assortment_rules=outlet_assortment_rules_alloc,
+                        push_new_sku_rules=push_new_sku_rules_alloc,
+                        restricted_brands_for_donation=['BrandB'] # Example
+                    )
+
                     instore_stock_file_alloc = os.path.join(app.root_path, 'data', 'InputData', 'in_store_inventory.csv')
                     intransit_stock_file_alloc = os.path.join(app.root_path, 'data', 'InputData', 'stock_in_transit.csv')
-                    existing_stock_dict_alloc = load_existing_stock_data(instore_stock_file_alloc, intransit_stock_file_alloc)
+                    existing_stock_dict_alloc = load_existing_stock_dict(
+                        in_store_fp=instore_stock_file_alloc,
+                        in_transit_fp=intransit_stock_file_alloc
+                    )
 
-                    # Calculate ABC for initial allocation
-                    sellout_file_path_alloc = os.path.join(app.root_path, 'data', 'InputData', 'sellout.csv')
+                    # Calculate ABC for initial allocation (raw_sellout_df_alloc is loaded from sellout_file_path_alloc)
                     raw_sellout_df_alloc = pd.read_csv(sellout_file_path_alloc)
                     all_channel_ids_list_alloc = channels_df_alloc.index.tolist()
                     product_channel_abc_map_alloc = calculate_abc_classification_and_new_skus(
