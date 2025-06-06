@@ -63,7 +63,10 @@
             - Implemented `frontend/ean_deep_dive.js` to fetch data from the new API and populate the page.
             - Integrated a "Details" link in the main allocation table (`frontend/index.html` and `frontend/app.js`) to navigate to the deep dive page.
             - Initiated a test file `tests/test_main_api_deep_dive.py` with basic structure for the new endpoint.
-            - *Note: A 404 error is currently being investigated for this new endpoint during runtime.*
+            - Resolved 404 error for `/api/ean_deep_dive_data` by correcting the frontend fetch URL to be absolute and ensuring proper backend route registration and logic.
+            - Corrected JavaScript error handling in `frontend/ean_deep_dive.js` for missing data properties.
+          - **Restored `/api/allocation_data` Endpoint (June 2025)**:
+            - Ensured the `/api/allocation_data` route definition was correctly present in `main.py` after it was inadvertently omitted during a previous file write, resolving a 404 error for this endpoint.
                     
 ## Learnings from User Testing
           - Users prefer tabular views with sorting/filtering over purely graphical representations

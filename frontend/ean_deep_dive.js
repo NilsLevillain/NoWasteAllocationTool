@@ -36,7 +36,7 @@ document.addEventListener('DOMContentLoaded', function() {
         eanDetailsContainer.style.display = 'none';
 
         try {
-            const response = await fetch(`/api/ean_deep_dive_data?ean=${eanValue}`);
+            const response = await fetch(`http://127.0.0.1:5000/api/ean_deep_dive_data?ean=${eanValue}`); // Use absolute URL
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({ error: `HTTP error! status: ${response.status}` }));
                 throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
@@ -61,25 +61,29 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function populatePage(data) {
         // Section 0: Product Information
-        if (data.product_info && !data.product_info.error) {
+        // Safely access product_info and its properties
+        const productInfo = data.product_info || {}; // Default to empty object if product_info is undefined
+        if (Object.keys(productInfo).length > 0 && !productInfo.error) {
             productInfoDiv.innerHTML = `
-                <div class="info-item"><strong>Description:</strong> ${data.product_info.description || 'N/A'}</div>
-                <div class="info-item"><strong>Brand:</strong> ${data.product_info.brand || 'N/A'}</div>
-                <div class="info-item"><strong>Division:</strong> ${data.product_info.division || 'N/A'}</div>
-                <div class="info-item"><strong>Axe:</strong> ${data.product_info.axe || 'N/A'}</div>
-                <div class="info-item"><strong>Sub-Axe:</strong> ${data.product_info.sub_axe || 'N/A'}</div>
-                <div class="info-item"><strong>Metier:</strong> ${data.product_info.metier || 'N/A'}</div>
-                <div class="info-item"><strong>SKU:</strong> ${data.product_info.sku || 'N/A'}</div>
+                <div class="info-item"><strong>Description:</strong> ${productInfo.description || 'N/A'}</div>
+                <div class="info-item"><strong>Brand:</strong> ${productInfo.brand || 'N/A'}</div>
+                <div class="info-item"><strong>Division:</strong> ${productInfo.division || 'N/A'}</div>
+                <div class="info-item"><strong>Axe:</strong> ${productInfo.axe || 'N/A'}</div>
+                <div class="info-item"><strong>Sub-Axe:</strong> ${productInfo.sub_axe || 'N/A'}</div>
+                <div class="info-item"><strong>Metier:</strong> ${productInfo.metier || 'N/A'}</div>
+                <div class="info-item"><strong>SKU:</strong> ${productInfo.sku || 'N/A'}</div>
             `;
         } else {
-            productInfoDiv.innerHTML = `<p class="text-danger">${data.product_info.error || 'Product information not available.'}</p>`;
+            // Handle case where product_info might be missing or contain an error message
+            productInfoDiv.innerHTML = `<p class="text-danger">${productInfo.error || 'Product information not available.'}</p>`;
         }
 
         // Section 1: Initial Stock & Inventory Status
-        totalBadStockEl.textContent = data.initial_stock?.bad_stock_to_allocate || 0;
-        if (data.initial_stock?.bad_stock_plant_breakdown?.length > 0) {
+        const initialStock = data.initial_stock || {}; // Default to empty object
+        totalBadStockEl.textContent = initialStock.bad_stock_to_allocate || 0;
+        if (initialStock.bad_stock_plant_breakdown?.length > 0) {
             let breakdownHtml = '<table class="table table-sm table-bordered"><thead><tr><th>Plant Code</th><th>Plant Name</th><th>Quantity</th><th>6m+ Excess</th><th>12m+ Excess</th></tr></thead><tbody>';
-            data.initial_stock.bad_stock_plant_breakdown.forEach(p => {
+            initialStock.bad_stock_plant_breakdown.forEach(p => {
                 breakdownHtml += `<tr><td>${p.plant_code}</td><td>${p.plant_description}</td><td>${p.quantity}</td><td>${p.flag_excess_6m}</td><td>${p.flag_excess_12m}</td></tr>`;
             });
             breakdownHtml += '</tbody></table>';
@@ -88,10 +92,10 @@ document.addEventListener('DOMContentLoaded', function() {
             badStockBreakdownDiv.innerHTML = '<p>No plant breakdown available for bad stock.</p>';
         }
 
-        totalExistingChannelStockEl.textContent = data.initial_stock?.total_existing_channel_stock || 0;
-        if (data.initial_stock?.existing_channel_stock_breakdown?.length > 0) {
+        totalExistingChannelStockEl.textContent = initialStock.total_existing_channel_stock || 0;
+        if (initialStock.existing_channel_stock_breakdown?.length > 0) {
             let existingStockHtml = '<table class="table table-sm table-bordered"><thead><tr><th>Channel ID</th><th>Channel Name</th><th>Quantity</th></tr></thead><tbody>';
-            data.initial_stock.existing_channel_stock_breakdown.forEach(s => {
+            initialStock.existing_channel_stock_breakdown.forEach(s => {
                 existingStockHtml += `<tr><td>${s.channel_id}</td><td>${s.channel_name}</td><td>${s.quantity}</td></tr>`;
             });
             existingStockHtml += '</tbody></table>';
