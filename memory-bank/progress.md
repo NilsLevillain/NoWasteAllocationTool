@@ -25,8 +25,18 @@
     - Implemented live updates for the "Remaining Qty" column in `frontend/app.js` based on user input in allocation channel fields.
 - **Chart Color Palette Customization (June 2025)**:
     - Implemented a `generateColorShades` helper in `frontend/app.js`.
-    - Applied a yellow-to-green gradient for the "Stock at Risk by Division" and "Stock at Risk by Brand" pie charts.
-    - Applied a distinct professional color palette for the "Stock of EANs Allocated to Channels (by Plant)" bar chart.
+            - Applied a yellow-to-green gradient for the "Stock at Risk by Division" and "Stock at Risk by Brand" pie charts.
+            - Applied a distinct professional color palette for the "Stock of EANs Allocated to Channels (by Plant)" bar chart.
+- **Refined "NEW SKU" Definition (June 2025)**:
+    - Updated `backend/solver.py` (`calculate_abc_classification_and_new_skus`) to define "NEW" SKUs based on no sales AND no in-store stock. Products with no sales but with stock are now 'C'.
+    - Updated the call to this function in `backend/solver.py`'s `__main__` block and in `main.py`'s `/api/auto_allocate` endpoint to pass necessary in-store inventory data.
+- **EAN Allocation Deep Dive Feature (Initial Implementation - June 2025)**:
+    - **Backend**: Created `/api/ean_deep_dive_data` in `main.py` to serve detailed EAN data (product info, stock, channel performance, ABC, rules, final allocations). Ensured correct route registration.
+    - **Frontend**: Developed `frontend/ean_deep_dive.html` and `frontend/ean_deep_dive.js` for displaying this data.
+    - **Integration**: Added "Details" link in the main allocation table (`frontend/app.js`, `frontend/index.html`) to navigate to the deep dive page.
+    - **Testing**: Initiated `tests/test_main_api_deep_dive.py` for the new endpoint.
+    - *Current Issue*: A 404 error is reported when accessing the `/api/ean_deep_dive_data` endpoint from the frontend, despite efforts to ensure correct route registration. Test environment also shows an "out of application context" error for this endpoint's tests. Investigation ongoing.
+
 
 ## Remaining Work
 - Continue refinement of the optimization engine constraints and objective function as outlined in `activeContext.md`.
@@ -39,7 +49,9 @@
 ## Current Status
 - Data ingestion and preprocessing layer is now stable and well-tested.
 - Core optimization logic is integrated with the new data loading utilities.
-- `/api/auto_allocate` endpoint correctly saves allocations to the database, and the frontend now accurately reflects these changes.
+- `/api/auto_allocate` endpoint correctly saves allocations to the database, and the frontend now accurately reflects these changes. The "NEW SKU" logic used by this endpoint is updated.
 - The `/api/allocation_data` endpoint now serves allocation data sourced from the database, providing a consistent view for the frontend.
 - Client-side handling of the auto-allocation process in `frontend/app.js` is more robust.
+- Initial backend and frontend components for the "EAN Allocation Deep Dive" feature are in place.
 - Ready to proceed with further development on optimization logic and UI, with a solid foundation for data handling and display.
+- *Ongoing*: Debugging the 404 error for `/api/ean_deep_dive_data` and the "out of application context" error in its unit tests.

@@ -54,11 +54,36 @@ def calculate_abc_classification_and_new_skus(
     all_channel_ids: list, # Now specific channel IDs like 'A90', 'B10'
     sellout_ean_col: str,
     sellout_channel_col: str, # This is 'store_code' from sellout.csv
-    sellout_qty_col: str
+    sellout_qty_col: str,
+    in_store_inventory_df: pd.DataFrame # New parameter for in-store stock
 ):
     product_channel_abc_map = {}
 
     logger.debug(f"Starting ABC classification. Sellout EAN col: {sellout_ean_col}, Channel col: {sellout_channel_col}, Qty col: {sellout_qty_col}")
+    
+    # Process in-store inventory data
+    logger.debug("Processing in-store inventory data for NEW SKU classification.")
+    # Ensure correct types, using provided column names directly
+    in_store_inventory_df[sellout_ean_col] = in_store_inventory_df['barcode'].astype(str) # Assuming 'barcode' is EAN
+    in_store_inventory_df[sellout_channel_col] = in_store_inventory_df['store_code'].astype(str) # Assuming 'store_code' is channel
+    in_store_inventory_df['physical_quantity'] = pd.to_numeric(in_store_inventory_df['physical_quantity'], errors='coerce').fillna(0)
+    
+    # Filter for positive stock and create a set of (ean, channel) tuples
+    stocked_df = in_store_inventory_df[in_store_inventory_df['physical_quantity'] > 0]
+    stocked_product_channel_pairs = set()
+    if not stocked_df.empty:
+        # Group by channel and EAN, sum quantities (though sum isn't strictly needed for existence check if filtered by >0)
+        # Using the sellout_channel_col and sellout_ean_col for consistency if they map to 'store_code' and 'barcode'
+        # If in_store_inventory_df uses different names, direct names 'store_code', 'barcode' should be used here.
+        # For this implementation, assuming 'barcode' and 'store_code' are the actual column names in in_store_inventory_df
+        # and sellout_ean_col, sellout_channel_col are passed as 'barcode' and 'store_code' respectively when this function is called.
+        
+        # Corrected to use actual column names from in_store_inventory_df for creating the set
+        stocked_product_channel_pairs = set(zip(stocked_df['barcode'].astype(str), stocked_df['store_code'].astype(str)))
+        logger.debug(f"Found {len(stocked_product_channel_pairs)} product-channel pairs with existing stock.")
+    else:
+        logger.debug("No product-channel pairs with existing stock found in in_store_inventory_df.")
+
     sellout_df[sellout_ean_col] = sellout_df[sellout_ean_col].astype(str)
     sellout_df[sellout_channel_col] = sellout_df[sellout_channel_col].astype(str)
     sellout_df[sellout_qty_col] = pd.to_numeric(sellout_df[sellout_qty_col], errors='coerce').fillna(0)
@@ -112,17 +137,33 @@ def calculate_abc_classification_and_new_skus(
 
             ean = row[sellout_ean_col]
             cum_percent = row['cumulative_percent']
-            if cum_percent <= 0.2: 
+            if cum_percent <= 0.8: 
                 product_channel_abc_map[(ean, channel_id_from_list)] = 'A'
-            elif cum_percent <= 0.8: 
+            elif cum_percent <= 0.95: 
                 product_channel_abc_map[(ean, channel_id_from_list)] = 'B'
             else: 
                 product_channel_abc_map[(ean, channel_id_from_list)] = 'C'
 
-        sold_eans_in_this_channel = set(channel_sales[sellout_ean_col])
-        for product_ean in product_master_df.index:
-            if product_ean not in sold_eans_in_this_channel:
-                product_channel_abc_map[(product_ean, channel_id_from_list)] = 'NEW'
+        sold_eans_in_this_channel = set(channel_sales[sellout_ean_col].astype(str))
+        current_channel_id_str = str(channel_id_from_list)
+
+        for product_ean_from_master in product_master_df.index:
+            product_ean_str = str(product_ean_from_master)
+            # Check if product was sold in this channel
+            if product_ean_str not in sold_eans_in_this_channel:
+                # Product has no sales in this channel. Now check stock.
+                has_stock_in_channel = (product_ean_str, current_channel_id_str) in stocked_product_channel_pairs
+                
+                if not has_stock_in_channel:
+                    # No sales AND no stock in this channel -> NEW
+                    product_channel_abc_map[(product_ean_str, current_channel_id_str)] = 'NEW'
+                    logger.debug(f"EAN {product_ean_str} in channel {current_channel_id_str} classified as NEW (no sales, no stock).")
+                else:
+                    # No sales BUT HAS stock in this channel -> C (or other, 'C' as default)
+                    product_channel_abc_map[(product_ean_str, current_channel_id_str)] = 'C'
+                    logger.debug(f"EAN {product_ean_str} in channel {current_channel_id_str} classified as C (no sales, but has stock).")
+            # If product_ean_str IS in sold_eans_in_this_channel, its ABC class (A, B, or C)
+            # has already been assigned by the logic above. No need for an else here.
             
     return product_channel_abc_map
 
@@ -361,8 +402,24 @@ if __name__ == '__main__':
         )
         
         logger.info("--- Calculating ABC Classification (in __main__) ---")
-        raw_sellout_df = pd.read_csv(sellout_file) 
+        raw_sellout_df = pd.read_csv(sellout_file)
         
+        # Load in-store inventory for ABC classification
+        logger.info(f"Loading in-store inventory from: {in_store_inventory_file} for ABC/NEW SKU calculation.")
+        try:
+            # Assuming standard column names 'store_code', 'barcode', 'physical_quantity' as per user confirmation
+            raw_in_store_inventory_df = pd.read_csv(in_store_inventory_file, dtype={'store_code': str, 'barcode': str})
+            # No specific utility function call here, direct load for __main__ as per plan.
+            # The function calculate_abc_classification_and_new_skus will handle its own processing.
+            logger.info(f"Successfully loaded in-store inventory data: {raw_in_store_inventory_df.shape[0]} rows.")
+        except FileNotFoundError:
+            logger.error(f"In-store inventory file not found: {in_store_inventory_file}. Proceeding without it for NEW SKU, this may affect NEW classification.")
+            raw_in_store_inventory_df = pd.DataFrame(columns=['store_code', 'barcode', 'physical_quantity']) # Empty df
+        except Exception as e:
+            logger.error(f"Error loading in-store inventory file {in_store_inventory_file}: {e}. Proceeding with empty df.")
+            raw_in_store_inventory_df = pd.DataFrame(columns=['store_code', 'barcode', 'physical_quantity'])
+
+
         all_loaded_channel_ids = channels_df.index.tolist()
         product_channel_abc_map = calculate_abc_classification_and_new_skus(
             raw_sellout_df,
@@ -370,7 +427,8 @@ if __name__ == '__main__':
             all_channel_ids=all_loaded_channel_ids, 
             sellout_ean_col='barcode', 
             sellout_channel_col='store_code', 
-            sellout_qty_col='total_items_weekly'
+            sellout_qty_col='total_items_weekly',
+            in_store_inventory_df=raw_in_store_inventory_df # Pass the new DataFrame
         )
         logger.info(f"Calculated ABC & NEW status for {len(product_channel_abc_map)} product-channel pairs.")
 

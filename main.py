@@ -112,26 +112,6 @@ def login():
     else:
         return jsonify({"msg": "Bad username or password"}), 401
 
-
-if __name__ == '__main__':
-    with app.app_context():
-        # Create tables first if they don't exist
-        db.create_all()
-
-        # Ensure a default user exists for testing if the table is empty
-        if not User.query.first():
-            # WARNING: Storing plain text password - highly insecure!
-            # In a real app, use password hashing (e.g., Werkzeug's generate_password_hash)
-            # Also, the User model expects 'password_hash', not 'password'.
-            # For this basic setup, let's adjust the User model or store a dummy hash.
-            # Simpler for now: Add a plain 'password' field to User model (less ideal)
-            # OR store something in password_hash. Let's store the plain password there for now.
-            # Re-emphasizing: THIS IS NOT SECURE FOR REAL APPLICATIONS.
-            default_user = User(username='testuser', email='test@example.com', password_hash='password') # Store plain pwd in hash field for demo
-            db.session.add(default_user)
-            db.session.commit()
-            print("Created default user: testuser / password (stored insecurely)")
-
 # --- New Endpoint for Auto-Allocation ---
 @app.route('/api/auto_allocate', methods=['POST'])
 # @jwt_required() # Add authentication if needed
@@ -236,6 +216,18 @@ def auto_allocate_endpoint():
         app.logger.info("Calculating ABC classification...")
         raw_sellout_df = pd.read_csv(sellout_file_path)
         raw_sellout_df['barcode'] = raw_sellout_df['barcode'].astype(str) # Ensure EAN is string for matching
+
+        # Load in-store inventory for ABC classification, similar to solver.py's __main__
+        app.logger.info(f"Loading in-store inventory from: {instore_stock_file_path} for ABC/NEW SKU calculation in API.")
+        try:
+            raw_in_store_inventory_df = pd.read_csv(instore_stock_file_path, dtype={'store_code': str, 'barcode': str})
+            app.logger.info(f"Successfully loaded in-store inventory data for API: {raw_in_store_inventory_df.shape[0]} rows.")
+        except FileNotFoundError:
+            app.logger.error(f"In-store inventory file not found for API: {instore_stock_file_path}. Proceeding with empty DataFrame.")
+            raw_in_store_inventory_df = pd.DataFrame(columns=['store_code', 'barcode', 'physical_quantity'])
+        except Exception as e:
+            app.logger.error(f"Error loading in-store inventory file for API {instore_stock_file_path}: {e}. Proceeding with empty DataFrame.")
+            raw_in_store_inventory_df = pd.DataFrame(columns=['store_code', 'barcode', 'physical_quantity'])
         
         all_channel_ids_list = channels_df.index.tolist()
         product_channel_abc_map = calculate_abc_classification_and_new_skus(
@@ -244,7 +236,8 @@ def auto_allocate_endpoint():
             all_channel_ids=all_channel_ids_list, # List of string channel IDs
             sellout_ean_col='barcode', 
             sellout_channel_col='store_code',
-            sellout_qty_col='total_items_weekly'
+            sellout_qty_col='total_items_weekly',
+            in_store_inventory_df=raw_in_store_inventory_df # Pass the newly loaded DataFrame
         )
         app.logger.info(f"Calculated ABC map for {len(product_channel_abc_map)} product-channel pairs.")
 
@@ -548,6 +541,308 @@ def get_allocation_data():
 
 
 # --- Existing Endpoints ---
+
+# --- New Endpoint for EAN Deep Dive Data ---
+def get_ean_deep_dive_data_logic(ean_code: str):
+    """
+    Gathers and processes all relevant data for a specific EAN
+    to provide a comprehensive view for debugging and understanding allocations.
+    """
+    app.logger.info(f"--- Starting EAN Deep Dive data gathering for EAN: {ean_code} ---")
+    
+    data_response = {
+        "ean": ean_code,
+        "product_info": {},
+        "initial_stock": {},
+        "channel_performance": [], # List of dicts, one per channel
+        "applied_rules": [], # List of dicts, one per channel
+        "final_allocation": [], # List of dicts, one per channel
+        "solver_constraints_summary": [] # Simplified summary
+    }
+
+    # Define file paths (consistent with auto_allocate_endpoint)
+    masterdata_file_path = os.path.join(app.root_path, 'data', 'InputData', 'masterdata.csv')
+    bad_stock_inventory_file_path = os.path.join(app.root_path, 'data', 'InputData', 'bad_stock_inventory.csv')
+    instore_stock_file_path = os.path.join(app.root_path, 'data', 'InputData', 'in_store_inventory.csv')
+    intransit_stock_file_path = os.path.join(app.root_path, 'data', 'InputData', 'stock_in_transit.csv')
+    sellout_file_path = os.path.join(app.root_path, 'data', 'InputData', 'sellout.csv')
+    channellist_file_path = os.path.join(app.root_path, 'data', 'ExcelParameters', 'ChannelList.xlsx')
+    # Rule files
+    coverage_file_path = os.path.join(app.root_path, 'data', 'ExcelParameters', 'CoverageperABCperChannel.xlsx')
+    capacity_file_path = os.path.join(app.root_path, 'data', 'ExcelParameters', 'CapacityPerChannel.xlsx')
+    assortment_file_path = os.path.join(app.root_path, 'data', 'ExcelParameters', 'AssortmentperSubaxeperSignature.xlsx')
+    push_new_sku_file_path = os.path.join(app.root_path, 'data', 'ExcelParameters', 'PushNewSKU.xlsx')
+
+    try:
+        # 1. Load Product Master Data
+        app.logger.debug(f"Loading product master data from {masterdata_file_path}")
+        products_df_full = load_products_df(masterdata_file_path) # Returns df indexed by 'ean'
+        if ean_code in products_df_full.index:
+            product_series = products_df_full.loc[ean_code]
+            data_response["product_info"] = {
+                "description": product_series.get('name', 'N/A'), # Assuming 'name' column from load_products_df
+                "brand": product_series.get('brand', 'N/A'),
+                "division": product_series.get('div', 'N/A'),
+                "axe": product_series.get('axe', 'N/A'),
+                "sub_axe": product_series.get('subAxe', 'N/A'),
+                "metier": product_series.get('metier', 'N/A'),
+                "sku": product_series.get('sku', 'N/A'), # Assuming 'sku' is internal_product_code
+                # Add other relevant fields from products_df if needed
+            }
+            app.logger.debug(f"Product info for EAN {ean_code}: {data_response['product_info']}")
+        else:
+            app.logger.warning(f"EAN {ean_code} not found in product master data.")
+            data_response["product_info"] = {"error": "EAN not found in master data."}
+            # Do not return early, try to gather other info if possible.
+        
+        # 2. Load Bad Stock Inventory (Initial stock to allocate for this EAN)
+        app.logger.debug(f"Loading bad stock inventory from {bad_stock_inventory_file_path}")
+        bad_stock_df_full = load_inventory_df(bad_stock_inventory_file_path) # Returns 'product_ean', 'quantity', 'plant', 'stockOrigin', etc.
+        ean_bad_stock_df = bad_stock_df_full[bad_stock_df_full['product_ean'] == ean_code]
+        
+        if not ean_bad_stock_df.empty:
+            total_bad_stock_for_ean = ean_bad_stock_df['quantity'].sum()
+            data_response["initial_stock"]["bad_stock_to_allocate"] = int(total_bad_stock_for_ean)
+            plant_breakdown = []
+            for _, row in ean_bad_stock_df.iterrows():
+                plant_breakdown.append({
+                    "plant_code": row.get('plant', 'N/A'),
+                    "plant_description": row.get('stockOrigin', 'N/A'), # stockOrigin is plant description
+                    "quantity": int(row.get('quantity', 0)),
+                    "flag_excess_6m": int(row.get('flagExcess6months', 0)),
+                    "flag_excess_12m": int(row.get('flagExcess12months', 0))
+                })
+            data_response["initial_stock"]["bad_stock_plant_breakdown"] = plant_breakdown
+            app.logger.debug(f"Bad stock for EAN {ean_code}: Total {total_bad_stock_for_ean}, Breakdown: {plant_breakdown}")
+        else:
+            data_response["initial_stock"]["bad_stock_to_allocate"] = 0
+            data_response["initial_stock"]["bad_stock_plant_breakdown"] = []
+            app.logger.debug(f"No bad stock found for EAN {ean_code}.")
+
+        # 3. Load Existing Stock (In-Store and In-Transit)
+        app.logger.debug(f"Loading existing stock from {instore_stock_file_path} and {intransit_stock_file_path}")
+        # Re-using load_existing_stock_dict logic, then filtering for the EAN
+        # This returns a dict of {(ean, channel): quantity}
+        existing_stock_dict_full = load_existing_stock_dict(
+            in_store_fp=instore_stock_file_path,
+            in_transit_fp=intransit_stock_file_path
+            # Assuming default column names are handled by load_existing_stock_dict
+            # e.g., ean_col='barcode', channel_col='store_code', qty_col='physical_quantity'/'quantity'
+        )
+        
+        ean_existing_channel_stock = []
+        total_existing_stock_for_ean = 0
+        # Need channel list to iterate through all possible channels
+        channels_df_for_stock = load_channels_df(channellist_file_path)
+        
+        for channel_id_str in channels_df_for_stock.index.tolist():
+            stock_qty = existing_stock_dict_full.get((ean_code, channel_id_str), 0)
+            if stock_qty > 0: # Only list channels where this EAN has stock
+                 ean_existing_channel_stock.append({
+                    "channel_id": channel_id_str,
+                    "channel_name": channels_df_for_stock.loc[channel_id_str, 'name'] if channel_id_str in channels_df_for_stock.index else channel_id_str,
+                    "quantity": int(stock_qty)
+                })
+            total_existing_stock_for_ean += stock_qty
+        
+        data_response["initial_stock"]["total_existing_channel_stock"] = int(total_existing_stock_for_ean)
+        data_response["initial_stock"]["existing_channel_stock_breakdown"] = ean_existing_channel_stock
+        app.logger.debug(f"Existing channel stock for EAN {ean_code}: Total {total_existing_stock_for_ean}, Breakdown: {ean_existing_channel_stock}")
+
+        # 4. Load Channels, Sellout, and Calculate ABC per channel for the EAN
+        app.logger.debug(f"Loading channel data from {channellist_file_path}")
+        channels_df = load_channels_df(channellist_file_path) # Indexed by 'id' (channel_id_string)
+        
+        app.logger.debug(f"Loading sellout data from {sellout_file_path}")
+        sellout_df_full = pd.read_csv(sellout_file_path, dtype={'barcode': str, 'store_code': str})
+        ean_sellout_df = sellout_df_full[sellout_df_full['barcode'] == ean_code]
+
+        app.logger.debug(f"Loading in-store inventory for ABC calculation from {instore_stock_file_path}")
+        # This is also used by load_existing_stock_dict, consider optimizing if performance becomes an issue
+        # For now, reloading for clarity within this specific data gathering logic.
+        in_store_inv_df_for_abc = pd.read_csv(instore_stock_file_path, dtype={'store_code': str, 'barcode': str})
+
+        # Prepare product_master_df for calculate_abc_classification_and_new_skus
+        # It needs to be a DataFrame, not a Series, and indexed by EAN.
+        # products_df_full is already indexed by EAN. We need just the row for the current ean_code.
+        # However, calculate_abc_classification_and_new_skus iterates product_master_df.index.
+        # For a single EAN deep dive, we might need to adapt or call it carefully.
+        # Let's pass the single-row DataFrame for the specific EAN.
+        single_ean_product_master_df = products_df_full[products_df_full.index == ean_code]
+
+        if not single_ean_product_master_df.empty:
+            # The calculate_abc_classification_and_new_skus function returns a map for all products in product_master_df.
+            # We are interested in the classification of *this* ean_code across all channels.
+            # It might be more efficient to extract the logic for a single EAN or process its output.
+            # For now, let's call it and then extract the relevant parts.
+            # It expects all_channel_ids as a list.
+            all_channel_ids_list_for_abc = channels_df.index.tolist()
+            
+            # Ensure sellout_df passed to ABC has the correct column names expected by the function
+            # The function expects sellout_ean_col='barcode', sellout_channel_col='store_code', sellout_qty_col='total_items_weekly'
+            # Our ean_sellout_df already has these.
+            
+            product_channel_abc_map_full = calculate_abc_classification_and_new_skus(
+                sellout_df=ean_sellout_df, # Filtered sellout for the EAN
+                product_master_df=single_ean_product_master_df, # DF for the single EAN
+                all_channel_ids=all_channel_ids_list_for_abc,
+                sellout_ean_col='barcode',
+                sellout_channel_col='store_code',
+                sellout_qty_col='total_items_weekly',
+                in_store_inventory_df=in_store_inv_df_for_abc # Full in-store inventory
+            )
+        else:
+            product_channel_abc_map_full = {} # EAN not in master, so no ABC
+            app.logger.warning(f"EAN {ean_code} not in product_master_df, ABC map will be empty for it.")
+
+
+        # Demand dict for the specific EAN
+        # load_demand_dict returns {(ean, channel): demand_value}
+        # We can filter this for our ean_code.
+        demand_dict_full = load_demand_dict(sellout_file_path, ean_col='barcode', channel_col='store_code', demand_qty_col='total_items_weekly')
+
+        for channel_id_str, channel_row in channels_df.iterrows():
+            channel_performance_item = {
+                "channel_id": channel_id_str,
+                "channel_name": channel_row.get('name', channel_id_str),
+                "channel_type": channel_row.get('channel_type', 'N/A'),
+                "sellout_qty": 0, # Default
+                "calculated_demand": 0, # Default
+                "abc_class": "N/A" # Default
+            }
+            
+            # Sellout quantity for this EAN in this channel
+            # Sum 'total_items_weekly' from ean_sellout_df where store_code matches channel_id_str
+            current_channel_sellout = ean_sellout_df[ean_sellout_df['store_code'] == channel_id_str]
+            if not current_channel_sellout.empty:
+                channel_performance_item["sellout_qty"] = int(current_channel_sellout['total_items_weekly'].sum())
+            
+            # Calculated demand for this EAN in this channel
+            # Assuming seasonality_coefficient = 1.0 for this display, as in OptimizationParameters default
+            channel_performance_item["calculated_demand"] = int(demand_dict_full.get((ean_code, channel_id_str), 0))
+            
+            # ABC Class
+            channel_performance_item["abc_class"] = product_channel_abc_map_full.get((ean_code, channel_id_str), 'N/A')
+            
+            data_response["channel_performance"].append(channel_performance_item)
+        app.logger.debug(f"Channel performance for EAN {ean_code}: {data_response['channel_performance']}")
+
+        # 5. Load Rules and Determine Applicability for the EAN
+        app.logger.debug(f"Loading optimization rules for EAN {ean_code} deep dive.")
+        coverage_rules_list = load_optimization_rules(coverage_file_path, CoverageDaysRule)
+        outlet_capacity_rules_list = load_optimization_rules(capacity_file_path, OutletSKUCapacityRule)
+        outlet_assortment_rules_list = load_optimization_rules(assortment_file_path, OutletAssortmentRule)
+        push_new_sku_rules_list = load_optimization_rules(push_new_sku_file_path, PushNewSKURule)
+        
+        # Convert rule lists to dictionaries for easier lookup if not already
+        # For this deep dive, we'll iterate and match.
+        # Product attributes needed for rule matching:
+        product_div = data_response["product_info"].get("division", "N/A")
+        product_axe = data_response["product_info"].get("axe", "N/A")
+        product_sub_axe = data_response["product_info"].get("sub_axe", "N/A")
+        product_metier = data_response["product_info"].get("metier", "N/A")
+        product_brand = data_response["product_info"].get("brand", "N/A")
+
+        # Placeholder for restricted brands (should come from config or parameters)
+        # For now, using the same example as in auto_allocate_endpoint
+        restricted_brands_for_donation_set = set(['BrandB'])
+
+
+        for cp_item in data_response["channel_performance"]: # cp_item is a dict for a channel
+            channel_id = cp_item["channel_id"]
+            channel_type = cp_item["channel_type"]
+            abc_class_in_channel = cp_item["abc_class"]
+            
+            applied_rules_for_channel = {
+                "channel_id": channel_id,
+                "coverage_rule": "N/A",
+                "push_new_sku_rule": "N/A",
+                "outlet_sku_capacity_rule": "N/A",
+                "outlet_assortment_rule": "N/A",
+                "restricted_brand_donation_rule": "N/A"
+            }
+
+            # Coverage Days Rule
+            for rule in coverage_rules_list:
+                if rule.channel_id == channel_id and rule.abc_class == abc_class_in_channel:
+                    # Calculate max allocation based on this rule (simplified for display)
+                    # demand_for_calc = cp_item["calculated_demand"] # Already calculated
+                    # existing_stock_for_calc = existing_stock_dict_full.get((ean_code, channel_id), 0)
+                    # max_alloc_coverage = "N/A"
+                    # if demand_for_calc > 0:
+                    #     max_alloc_coverage = max(0, (demand_for_calc / 7.0) * rule.coverage_days - existing_stock_for_calc)
+                    applied_rules_for_channel["coverage_rule"] = f"Class {abc_class_in_channel}: {rule.coverage_days} days. Max units (approx): Check solver logic."
+                    break
+            
+            # Push New SKU Rule (if NEW)
+            if abc_class_in_channel == 'NEW':
+                for rule in push_new_sku_rules_list:
+                    if rule.division == product_div and rule.subaxis == product_sub_axe:
+                        applied_rules_for_channel["push_new_sku_rule"] = f"Push {rule.push_quantity} units (Div: {product_div}, SubAxe: {product_sub_axe})."
+                        break
+            
+            # Outlet SKU Capacity Rule (if outlet)
+            if channel_type == 'outlet':
+                for rule in outlet_capacity_rules_list:
+                    if rule.channel_id == channel_id and rule.division == product_div and rule.axe == product_axe:
+                        applied_rules_for_channel["outlet_sku_capacity_rule"] = f"Max {rule.max_skus} SKUs for Div '{product_div}', Axe '{product_axe}'."
+                        break # Assuming one rule per channel-div-axe
+
+            # Outlet Assortment Rule (if outlet)
+            if channel_type == 'outlet':
+                 for rule in outlet_assortment_rules_list:
+                    # Note: OutletAssortmentRule in schemas.py is defined with metier, subaxis, brand but NO channel_id
+                    # This implies it's a global rule for outlets for that metier/subaxis/brand combo.
+                    if rule.metier == product_metier and rule.subaxis == product_sub_axe and rule.brand == product_brand:
+                        applied_rules_for_channel["outlet_assortment_rule"] = f"Max {rule.max_skus} SKUs for Metier '{product_metier}', SubAxe '{product_sub_axe}', Brand '{product_brand}' in outlets."
+                        break
+
+            # Restricted Brands for Donation
+            if channel_type == 'donation':
+                if product_brand in restricted_brands_for_donation_set:
+                    applied_rules_for_channel["restricted_brand_donation_rule"] = f"Brand '{product_brand}' is restricted for donation. Allocation = 0."
+                else:
+                    applied_rules_for_channel["restricted_brand_donation_rule"] = "Brand not restricted."
+            
+            data_response["applied_rules"].append(applied_rules_for_channel)
+        app.logger.debug(f"Applied rules for EAN {ean_code}: {data_response['applied_rules']}")
+
+
+        # 6. Fetch Final Allocation from Database
+        app.logger.debug(f"Fetching final allocations for EAN {ean_code} from database.")
+        db_allocations_for_ean = Allocation.query.filter_by(product_ean=ean_code).all()
+        if db_allocations_for_ean:
+            for alloc_db in db_allocations_for_ean:
+                data_response["final_allocation"].append({
+                    "channel_id": alloc_db.channel_id_string,
+                    "quantity_allocated": alloc_db.quantity,
+                    "allocation_date": alloc_db.allocation_date.isoformat() if alloc_db.allocation_date else None
+                })
+            app.logger.debug(f"Final allocations for EAN {ean_code}: {data_response['final_allocation']}")
+        else:
+            app.logger.debug(f"No final allocations found in DB for EAN {ean_code}.")
+
+
+        app.logger.info(f"Successfully gathered data for EAN {ean_code} (partially implemented).")
+        return data_response, 200
+
+    except FileNotFoundError as fnf_error:
+        app.logger.error(f"Data file not found during EAN deep dive for {ean_code}: {fnf_error}", exc_info=True)
+        return {"error": f"A required data file was not found: {str(fnf_error)}"}, 500
+    except Exception as e:
+        app.logger.error(f"Unexpected error during EAN deep dive for {ean_code}: {e}", exc_info=True)
+        return {"error": f"An unexpected error occurred: {str(e)}"}, 500
+
+
+@app.route('/api/ean_deep_dive_data', methods=['GET'])
+# @jwt_required() # Consider adding authentication
+def ean_deep_dive_data_endpoint():
+    ean = request.args.get('ean')
+    if not ean:
+        return jsonify({"error": "EAN parameter is required"}), 400
+    
+    data, status_code = get_ean_deep_dive_data_logic(ean)
+    return jsonify(data), status_code
 
 if __name__ == '__main__':
     with app.app_context():

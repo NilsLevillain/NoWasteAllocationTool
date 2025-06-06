@@ -68,6 +68,19 @@ The system implements the Observer pattern to notify various components when opt
     - Client-side logic in `frontend/app.js` for the `autoAllocate` function has been improved:
         - It now ensures that UI data is refreshed by calling `fetchAllocationData` (which hits `/api/allocation_data`) after an auto-allocation attempt, regardless of whether the direct response from `/api/auto_allocate` was successfully received by the client.
         - This resolves previous issues where a "Failed to fetch" alert might appear while the underlying server operation succeeded and data was updated in the database. The UI now more reliably reflects the database state.
+- **EAN Deep Dive Data Sourcing**:
+    - A new endpoint `/api/ean_deep_dive_data` in `main.py` is responsible for gathering all relevant information for a single EAN.
+    - This endpoint loads data from multiple sources:
+        - Product master data (`masterdata.csv`) via `load_products_df`.
+        - Bad stock inventory (`bad_stock_inventory.csv`) via `load_inventory_df`.
+        - Existing in-store and in-transit stock (`in_store_inventory.csv`, `stock_in_transit.csv`) via `load_existing_stock_dict`.
+        - Channel list (`ChannelList.xlsx`) via `load_channels_df`.
+        - Sellout data (`sellout.csv`) via `pd.read_csv` and `load_demand_dict`.
+        - In-store inventory (again, for ABC) via `pd.read_csv`.
+        - All rule Excel files via `load_optimization_rules`.
+        - Final allocations from the `Allocation` database table.
+    - It calls `calculate_abc_classification_and_new_skus` to determine the ABC/NEW status for the EAN across channels.
+    - The collected and processed data is returned as a structured JSON to the `frontend/ean_deep_dive.html` page.
 
 ## Error Handling Patterns
 - Input validation errors are caught early and presented to users for correction

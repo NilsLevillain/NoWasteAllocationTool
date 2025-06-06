@@ -86,8 +86,8 @@ Where:
 The model uses an ABC classification system based on product sales:
 - **A**: Top products that contribute to the first 20% of sales
 - **B**: Products that contribute to the next 60% of sales (up to 80% cumulative)
-- **C**: Products that contribute to the remaining 20% of sales
-- **NEW**: Products with no sales history in a particular channel
+- **C**: Products that contribute to the remaining 20% of sales (or products with no sales but existing in-store stock)
+- **NEW**: Products with no sales history AND no existing in-store stock in a particular channel.
 
 This classification influences the coverage days constraints.
 

@@ -439,6 +439,7 @@ document.addEventListener('DOMContentLoaded', () => {
             { headerText: 'SubAxe', key: 'subAxe' },
             { headerText: 'Metier', key: 'metier' },
             { headerText: 'EAN', key: 'ean' },
+            { headerText: 'Details', key: 'details', sortable: false }, // New Details column
             { headerText: 'SKU', key: 'sku' },
             { headerText: 'Description', key: 'description' },
             { headerText: 'Units', key: 'units' },
@@ -513,7 +514,19 @@ document.addEventListener('DOMContentLoaded', () => {
             row.insertCell().textContent = item.axe || '';
             row.insertCell().textContent = item.subAxe || '';
             row.insertCell().textContent = item.metier || '';
-            row.insertCell().textContent = item.ean || '';
+            
+            // EAN cell
+            const eanCell = row.insertCell();
+            eanCell.textContent = item.ean || '';
+
+            // Details link cell
+            const detailsCell = row.insertCell();
+            const detailsLink = document.createElement('a');
+            detailsLink.href = `ean_deep_dive.html?ean=${item.ean}`; // Assuming item.ean is populated
+            detailsLink.innerHTML = '<i class="fas fa-search"></i> Details'; // Using Font Awesome icon
+            detailsLink.target = '_blank'; // Open in new tab
+            detailsCell.appendChild(detailsLink);
+            
             row.insertCell().textContent = item.sku || '';
             row.insertCell().textContent = item.description || '';
             row.insertCell().textContent = (item.units || 0).toLocaleString();
