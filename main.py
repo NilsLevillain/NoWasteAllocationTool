@@ -384,6 +384,7 @@ def get_allocation_data():
         merged_df['stockOrigin'] = merged_df['stockOrigin'].fillna('N/A').astype(str) # Plant description
         merged_df['flagExcess6months'] = merged_df['flagExcess6months'].fillna(0).astype(int)
         merged_df['flagExcess12months'] = merged_df['flagExcess12months'].fillna(0).astype(int)
+        merged_df['bad_stock_type'] = merged_df['bad_stock_type'].fillna('').astype(str) # Add this line
         if 'product_ean' in merged_df.columns: merged_df.drop(columns=['product_ean'], inplace=True)
 
         db_allocations = Allocation.query.all()
@@ -401,8 +402,9 @@ def get_allocation_data():
                 'ean': ean_val, 'sku': row.get('sku', 'N/A'),
                 'description': row.get('description', 'N/A'), 'units': row.get('quantity', 0),
                 'stockOrigin': row.get('stockOrigin', 'N/A'), # Plant Description
-                'flagExcess6months': row.get('flagExcess6months', 0),
-                'flagExcess12months': row.get('flagExcess12months', 0),
+                'bad_stock_type': row.get('bad_stock_type', ''), # Add this line
+                # 'flagExcess6months': row.get('flagExcess6months', 0), # Remove this line
+                # 'flagExcess12months': row.get('flagExcess12months', 0), # Remove this line
                 'plant': row.get('stockOrigin', 'N/A'), # For display and filter, use Plant Description
                 'plant_code': plant_code_val, # Keep plant code if needed
                 'allocAccu': "0%", 'channels': channel_data,

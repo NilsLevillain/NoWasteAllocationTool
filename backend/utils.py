@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 import os
 import logging
 from collections import defaultdict
@@ -226,8 +227,21 @@ def load_inventory_df(file_path: str, ean_col: str = 'ean_code', qty_col: str = 
         'flagExcess6months': 'first',
         'flagExcess12months': 'first'
     })
+
+    # Create the 'bad_stock_type' column based on flag values
+    conditions = [
+        (result_df['flagExcess6months'] == 1) & (result_df['flagExcess12months'] == 1),
+        (result_df['flagExcess6months'] == 1) & (result_df['flagExcess12months'] == 0),
+        (result_df['flagExcess6months'] == 0) & (result_df['flagExcess12months'] == 1)
+    ]
+    choices = [
+        "Excess 6 & 12 months",
+        "Excess 6 months",
+        "Excess 12 months"
+    ]
+    result_df['bad_stock_type'] = np.select(conditions, choices, default="")
     
-    logger.info(f"Loaded inventory for {len(result_df)} EAN-plant combinations from {file_path}. Total quantity: {result_df['quantity'].sum()}")
+    logger.info(f"Loaded inventory for {len(result_df)} EAN-plant combinations from {file_path}. Total quantity: {result_df['quantity'].sum()}. 'bad_stock_type' column created.")
     return result_df
 
 def load_existing_stock_dict(in_store_fp: str, in_transit_fp: str,
