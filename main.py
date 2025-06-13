@@ -380,6 +380,7 @@ def get_allocation_data():
         
         merged_df = pd.merge(products_df_to_merge, inventory_df, left_on='ean', right_on='product_ean', how='left')
         merged_df['quantity'] = merged_df['quantity'].fillna(0).astype(int)
+        merged_df['available_stock'] = merged_df['available_stock'].fillna(0).astype(int) # Added for AvailableStock
         merged_df['plant'] = merged_df['plant'].fillna('N/A').astype(str) # Plant code
         merged_df['stockOrigin'] = merged_df['stockOrigin'].fillna('N/A').astype(str) # Plant description
         merged_df['flagExcess6months'] = merged_df['flagExcess6months'].fillna(0).astype(int)
@@ -401,6 +402,7 @@ def get_allocation_data():
                 'subAxe': row.get('subAxe', 'N/A'), 'metier': row.get('metier', 'N/A'),
                 'ean': ean_val, 'sku': row.get('sku', 'N/A'),
                 'description': row.get('description', 'N/A'), 'units': row.get('quantity', 0),
+                'available_stock': row.get('available_stock', 0), # Added for AvailableStock
                 'stockOrigin': row.get('stockOrigin', 'N/A'), # Plant Description
                 'bad_stock_type': row.get('bad_stock_type', ''), # Add this line
                 # 'flagExcess6months': row.get('flagExcess6months', 0), # Remove this line

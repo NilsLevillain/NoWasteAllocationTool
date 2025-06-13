@@ -178,8 +178,16 @@ def optimize_allocation(products_df: pd.DataFrame, channels_df: pd.DataFrame, in
     channels_df.index = channels_df.index.astype(str)
     products = products_df.index.tolist()
     channels = channels_df.index.tolist() # These are now 'A90', 'B10' etc.
-    inventory_quantity = inventory_df.groupby('product_ean')['quantity'].sum().to_dict()
-    logger.debug(f"Total inventory quantity by product: {inventory_quantity}")
+    
+    # inventory_df['quantity'] is StockToAllocate
+    # inventory_df['available_stock'] is AvailableStock
+    # Both are already loaded by load_inventory_df in utils.py
+    
+    stock_to_allocate_per_ean = inventory_df.groupby('product_ean')['quantity'].sum().to_dict()
+    logger.debug(f"Total stock to allocate by product: {stock_to_allocate_per_ean}")
+    
+    available_stock_per_ean = inventory_df.groupby('product_ean')['available_stock'].sum().to_dict()
+    logger.debug(f"Total available stock by product: {available_stock_per_ean}")
 
     coverage_rules_dict = {(r.channel_id, r.abc_class): r.coverage_days for r in parameters.coverage_days_rules}
     outlet_capacity_dict = {(r.channel_id, r.division, r.axe): r.max_skus for r in parameters.outlet_sku_capacity_rules}
@@ -208,7 +216,17 @@ def optimize_allocation(products_df: pd.DataFrame, channels_df: pd.DataFrame, in
     logger.debug("Objective function added: Maximize_Total_Allocation.")
 
     logger.info("Adding supply constraints.")
-    for p in products: model += pulp.lpSum(x[p, c] for c in channels) <= inventory_quantity.get(p, 0), f"Supply_Product_{p}"
+    for p in products:
+        # Get StockToAllocate for product p
+        s_to_allocate_p = stock_to_allocate_per_ean.get(p, 0)
+        # Get AvailableStock for product p
+        a_stock_p = available_stock_per_ean.get(p, 0)
+        
+        # Maximum allocatable quantity is the minimum of the two
+        max_allocatable_for_p = min(s_to_allocate_p, a_stock_p)
+        
+        model += pulp.lpSum(x[p, c] for c in channels) <= max_allocatable_for_p, f"Supply_Product_{p}"
+        logger.debug(f"Supply constraint for P:{p}: sum(alloc) <= {max_allocatable_for_p} (StockToAllocate: {s_to_allocate_p}, AvailableStock: {a_stock_p})")
     
     logger.info("Adding outlet SKU capacity constraints.")
     for c in channels: 
@@ -267,7 +285,12 @@ def optimize_allocation(products_df: pd.DataFrame, channels_df: pd.DataFrame, in
 
     logger.info("Linking allocation quantity (x) and allocation decision (y) variables.")
     for p in products:
-        M_val = inventory_quantity.get(p, 0) 
+        # M_val should be based on the actual maximum possible allocation for product p,
+        # which is min(StockToAllocate, AvailableStock)
+        s_to_allocate_p = stock_to_allocate_per_ean.get(p, 0)
+        a_stock_p = available_stock_per_ean.get(p, 0)
+        M_val = min(s_to_allocate_p, a_stock_p)
+        
         for c in channels:
             if M_val > 0:
                 model += x[p, c] <= M_val * y[p, c], f"Link_x_y_Prod_{p}_Chan_{c}"

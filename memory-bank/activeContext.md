@@ -67,6 +67,10 @@
             - Corrected JavaScript error handling in `frontend/ean_deep_dive.js` for missing data properties.
           - **Restored `/api/allocation_data` Endpoint (June 2025)**:
             - Ensured the `/api/allocation_data` route definition was correctly present in `main.py` after it was inadvertently omitted during a previous file write, resolving a 404 error for this endpoint.
+          - **Frontend UI Filtering for Non-Allocatable Stock (June 2025)**:
+            - Modified `main.py` (`/api/allocation_data` endpoint) to include `available_stock` in the JSON response, alongside `units` (for `StockToAllocate`).
+            - Updated `frontend/app.js` (`fetchAllocationData` function) to filter the displayed inventory items, showing only those where `item.units > 0` AND `item.available_stock > 0`.
+            - Added test data to `data/InputData/bad_stock_inventory.csv` to cover various scenarios of zero stock for allocation or availability.
                     
 ## Learnings from User Testing
           - Users prefer tabular views with sorting/filtering over purely graphical representations

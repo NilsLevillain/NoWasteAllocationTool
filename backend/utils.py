@@ -186,6 +186,7 @@ def load_channels_df(file_path: str, sheet_name: str = 'Feuil1', channel_id_col:
     return channels_df
 
 def load_inventory_df(file_path: str, ean_col: str = 'ean_code', qty_col: str = 'StockToAllocate', 
+                        available_stock_col: str = 'AvailableStock', # New parameter
                         plant_code_col: str = 'plant', plant_desc_col: str = 'plant_description',
                         flag6_col: str = 'FlagExcess6months', flag12_col: str = 'FlagExcess12months') -> pd.DataFrame:
     logger.info(f"Loading inventory data from: {file_path}")
@@ -198,7 +199,7 @@ def load_inventory_df(file_path: str, ean_col: str = 'ean_code', qty_col: str = 
         logger.error(f"Error reading inventory data file {file_path}: {e}")
         raise
         
-    required_cols = [ean_col, qty_col, plant_code_col, plant_desc_col, flag6_col, flag12_col]
+    required_cols = [ean_col, qty_col, available_stock_col, plant_code_col, plant_desc_col, flag6_col, flag12_col] # Added available_stock_col
     missing_cols = [col for col in required_cols if col not in df.columns]
     if missing_cols:
         logger.error(f"Required columns {missing_cols} missing in inventory file: {file_path}. Found: {df.columns.tolist()}")
@@ -206,7 +207,8 @@ def load_inventory_df(file_path: str, ean_col: str = 'ean_code', qty_col: str = 
     
     idf = df[required_cols].rename(columns={
         ean_col: 'product_ean', 
-        qty_col: 'quantity', 
+        qty_col: 'quantity', # This is StockToAllocate
+        available_stock_col: 'available_stock', # New column
         plant_code_col: 'plant', 
         plant_desc_col: 'stockOrigin',
         flag6_col: 'flagExcess6months',
@@ -216,6 +218,7 @@ def load_inventory_df(file_path: str, ean_col: str = 'ean_code', qty_col: str = 
     idf['plant'] = idf['plant'].astype(str) # This is the plant code
     idf['stockOrigin'] = idf['stockOrigin'].astype(str)
     idf['quantity'] = pd.to_numeric(idf['quantity'], errors='coerce').fillna(0)
+    idf['available_stock'] = pd.to_numeric(idf['available_stock'], errors='coerce').fillna(0) # New column processing
     idf['flagExcess6months'] = pd.to_numeric(idf['flagExcess6months'], errors='coerce').fillna(0).astype(int) # Assuming 0 or 1
     idf['flagExcess12months'] = pd.to_numeric(idf['flagExcess12months'], errors='coerce').fillna(0).astype(int) # Assuming 0 or 1
     
@@ -223,6 +226,7 @@ def load_inventory_df(file_path: str, ean_col: str = 'ean_code', qty_col: str = 
     # For flags and description, 'first' is used assuming they are consistent per EAN-Plant group or taking the first is acceptable.
     result_df = idf.groupby(['product_ean', 'plant'], as_index=False).agg({
         'quantity': 'sum',
+        'available_stock': 'sum', # New column aggregation
         'stockOrigin': 'first',
         'flagExcess6months': 'first',
         'flagExcess12months': 'first'

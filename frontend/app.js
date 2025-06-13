@@ -230,7 +230,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await response.json();
 
             // Update state with fetched data
-            allocationData = data.allocationData || [];
+            let rawAllocationData = data.allocationData || [];
+
+            // Filter out items where StockToAllocate (units) is 0 OR AvailableStock is 0
+            allocationData = rawAllocationData.filter(item => {
+                const stockToAllocate = item.units || 0;
+                const availableStock = item.available_stock || 0; // Key added in main.py
+                return stockToAllocate > 0 && availableStock > 0;
+            });
+
             channelColumns = data.channelColumns || [];
             const apiStatus = data.allocationStatus || 'UNKNOWN'; // Get status from API
 

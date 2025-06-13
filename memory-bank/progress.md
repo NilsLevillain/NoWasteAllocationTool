@@ -38,7 +38,10 @@
     - *Status*: The 404 error for `/api/ean_deep_dive_data` has been resolved. The endpoint is now functional with its full data-gathering logic. The "out of application context" error in its unit tests still needs investigation.
 - **Restored `/api/allocation_data` Endpoint Functionality (June 2025)**:
     - Corrected `main.py` to ensure the `/api/allocation_data` route definition was present and correctly placed, resolving a 404 error that had appeared for this endpoint.
-
+- **Frontend UI Filtering for Non-Allocatable Stock (June 2025)**:
+    - Modified `main.py` (`/api/allocation_data` endpoint) to include `available_stock` in the JSON response.
+    - Updated `frontend/app.js` (`fetchAllocationData` function) to filter displayed inventory, showing only items with `StockToAllocate > 0` AND `AvailableStock > 0`.
+    - Added test data to `data/InputData/bad_stock_inventory.csv` for comprehensive testing of the filtering logic.
 
 ## Remaining Work
 - Continue refinement of the optimization engine constraints and objective function as outlined in `activeContext.md`.
@@ -55,5 +58,6 @@
 - The `/api/allocation_data` endpoint is now functional again, serving allocation data sourced from the database.
 - Client-side handling of the auto-allocation process in `frontend/app.js` is more robust.
 - The "EAN Allocation Deep Dive" feature is now functional, providing detailed EAN-specific data.
+- Frontend UI now correctly filters out non-allocatable stock, improving data presentation clarity.
 - Ready to proceed with further development on optimization logic and UI, with a solid foundation for data handling and display.
 - *Ongoing*: Addressing the "out of application context" error in the unit tests for the `/api/ean_deep_dive_data` endpoint.
