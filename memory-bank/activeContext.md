@@ -71,6 +71,26 @@
             - Modified `main.py` (`/api/allocation_data` endpoint) to include `available_stock` in the JSON response, alongside `units` (for `StockToAllocate`).
             - Updated `frontend/app.js` (`fetchAllocationData` function) to filter the displayed inventory items, showing only those where `item.units > 0` AND `item.available_stock > 0`.
             - Added test data to `data/InputData/bad_stock_inventory.csv` to cover various scenarios of zero stock for allocation or availability.
+          - **Implemented Plant-Level Stock Allocation Constraints (June 2025)**:
+            - **Solver (`backend/solver.py`):**
+                - Decision variables `x` redefined as `x[ean, plant, channel]`.
+                - Auxiliary binary variable `y_ean_plant_channel` added for plant-level allocation decisions.
+                - Auxiliary binary variable `y_ean_channel` added for EAN-level allocation decisions (used for SKU counting constraints).
+                - Supply constraints now operate at the EAN-Plant level, ensuring `sum(x[ean, plant, c] for c in channels) <= min(stock_to_allocate_at_plant[ean, plant], available_stock_at_plant[ean, plant])`.
+                - Linking constraints updated to connect `x`, `y_ean_plant_channel`, and `y_ean_channel`.
+                - Coverage days, new SKU push, and restricted brand constraints now sum allocations across plants for a given EAN-Channel.
+                - Outlet SKU capacity and assortment constraints now use `y_ean_channel` for SKU counting at the EAN level.
+                - Solver results now include `plant_code`.
+            - **Database Model (`backend/models.py`):**
+                - Added `plant_code` field to the `Allocation` table.
+            - **API Logic (`main.py`):**
+                - `/api/auto_allocate`: Updated to save solver results (including `plant_code`) to the `Allocation` table.
+                - `/api/allocation_data`: Modified to fetch and structure EAN-Plant-Channel allocations. The `allocations_map` now uses `(ean, plant_code)` as keys. Frontend data `item.channels` now represents allocations from the specific EAN-Plant combination.
+                - `/api/save_allocations`: Updated to handle manual allocation changes at the EAN-Plant level, using the composite `id` (`ean_plantcode`) from the frontend.
+            - **Frontend Logic (`frontend/app.js`):**
+                - `saveAllocation` function updated to send EAN-Plant specific data (using `item.id` which is `ean_plantcode`) to the `/api/save_allocations` endpoint.
+                - `handleAllocationChange` remains largely compatible due to the existing `item.id` structure.
+                - No changes were required for `frontend/index.html` as the table structure already supported EAN-Plant rows.
                     
 ## Learnings from User Testing
           - Users prefer tabular views with sorting/filtering over purely graphical representations

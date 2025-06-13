@@ -42,6 +42,16 @@
     - Modified `main.py` (`/api/allocation_data` endpoint) to include `available_stock` in the JSON response.
     - Updated `frontend/app.js` (`fetchAllocationData` function) to filter displayed inventory, showing only items with `StockToAllocate > 0` AND `AvailableStock > 0`.
     - Added test data to `data/InputData/bad_stock_inventory.csv` for comprehensive testing of the filtering logic.
+- **Implemented Plant-Level Stock Allocation Constraints (June 2025)**:
+    - **Solver (`backend/solver.py`):** Modified to use EAN-Plant-Channel decision variables (`x[ean, plant, channel]`) and EAN-Plant specific supply constraints. Other constraints (coverage, new SKU, outlet capacity, assortment, restricted brands) were adapted to correctly sum or use EAN-level decisions derived from plant-level allocations. Solver results now include `plant_code`.
+    - **Database Model (`backend/models.py`):** Added `plant_code` field to the `Allocation` table.
+    - **API Logic (`main.py`):**
+        - `/api/auto_allocate`: Updated to save EAN-Plant-Channel allocations (including `plant_code`) to the database.
+        - `/api/allocation_data`: Modified to correctly fetch and structure EAN-Plant-Channel allocations for the frontend.
+        - `/api/save_allocations`: Updated to correctly process manual allocations submitted at the EAN-Plant level.
+    - **Frontend Logic (`frontend/app.js`):**
+        - `saveAllocation` function updated to send EAN-Plant specific data to the backend.
+        - Other frontend components (`handleAllocationChange`, table rendering) were already largely compatible with EAN-Plant granularity due to the existing `item.id` structure (`ean_plantcode`).
 
 ## Remaining Work
 - Continue refinement of the optimization engine constraints and objective function as outlined in `activeContext.md`.
@@ -59,5 +69,8 @@
 - Client-side handling of the auto-allocation process in `frontend/app.js` is more robust.
 - The "EAN Allocation Deep Dive" feature is now functional, providing detailed EAN-specific data.
 - Frontend UI now correctly filters out non-allocatable stock, improving data presentation clarity.
+- Core allocation logic now respects plant-level stock constraints, providing more accurate optimization.
+- Database and APIs updated to handle EAN-Plant-Channel granularity for allocations.
+- Frontend correctly displays and allows manual editing of EAN-Plant specific allocations.
 - Ready to proceed with further development on optimization logic and UI, with a solid foundation for data handling and display.
 - *Ongoing*: Addressing the "out of application context" error in the unit tests for the `/api/ean_deep_dive_data` endpoint.

@@ -106,6 +106,7 @@ class Allocation(db.Model):
     product_ean = db.Column(db.String(50), db.ForeignKey('product.ean'), nullable=False)
     # channel_id = db.Column(db.Integer, db.ForeignKey('channel.id')) # Link via string ID now
     channel_id_string = db.Column(db.String(50), db.ForeignKey('channel.channel_id_string'), nullable=False)
+    plant_code = db.Column(db.String(50), nullable=False) # New field for plant code
     quantity = db.Column(db.Integer)
     allocation_date = db.Column(db.DateTime, default=datetime.utcnow)
     status = db.Column(db.String(20), default='pending')  # pending, completed, cancelled
@@ -121,6 +122,7 @@ class Allocation(db.Model):
             'id': self.id,
             'product_ean': self.product_ean,
             'channel_id': self.channel_id_string, # Use string ID
+            'plant_code': self.plant_code, # New field
             'quantity': self.quantity,
             'allocation_date': self.allocation_date.isoformat() if self.allocation_date else None,
             'status': self.status,

@@ -316,15 +316,19 @@ def auto_allocate_endpoint():
         if status != 'Optimal': return jsonify({'error': f'Solver status: {status}'}), 500
         
         with db.session.begin_nested():
-            Allocation.query.delete()
+            Allocation.query.delete() # Clear previous allocations
+            app.logger.debug(f"Solver returned {len(allocation_results)} allocation entries.")
             for alloc_res in allocation_results:
+                # alloc_res now contains 'product_sku', 'plant_code', 'channel_id', 'quantity'
                 db.session.add(Allocation(
-                    product_ean=str(alloc_res['product_sku']), 
-                    channel_id_string=str(alloc_res['channel_id']), 
-                    quantity=int(alloc_res['quantity']), 
+                    product_ean=str(alloc_res['product_sku']),
+                    plant_code=str(alloc_res['plant_code']), # Add plant_code
+                    channel_id_string=str(alloc_res['channel_id']),
+                    quantity=int(alloc_res['quantity']),
                     allocation_date=datetime.now()
                 ))
         db.session.commit()
+        app.logger.info(f"Auto-allocation successful. Status: {status}. {len(allocation_results)} EAN-Plant-Channel allocations saved.")
         return jsonify({'message': 'Auto-allocation successful!', 'status': status, 'allocations_created': len(allocation_results)}), 200
     except Exception as e:
         db.session.rollback()
@@ -336,19 +340,57 @@ def auto_allocate_endpoint():
 # @jwt_required()
 def save_manual_allocations():
     try:
-        changes = request.get_json()
-        if not isinstance(changes, list): return jsonify({'error': 'Invalid data format.'}), 400
-        processed_eans = set()
+        changes = request.get_json() # Expects a list of {'id': 'ean_plant', 'channels': {'channel_id': qty, ...}}
+        if not isinstance(changes, list): return jsonify({'error': 'Invalid data format. Expected a list.'}), 400
+        
+        app.logger.info(f"Received {len(changes)} items for manual allocation saving.")
+
+        # Group changes by EAN to efficiently delete existing allocations for that EAN
+        # This assumes that if any plant for an EAN is modified, all allocations for that EAN should be re-evaluated/re-saved.
+        # A more granular approach might be needed if only specific EAN-Plant allocations should be touched.
+        # For now, if an EAN is in the changes, all its allocations are cleared and then re-added based on the input.
+        
+        eans_to_clear = set()
         for change in changes:
-            ean, new_channels = change.get('ean'), change.get('channels')
-            if not ean or not isinstance(new_channels, dict): continue
-            if ean not in processed_eans:
-                Allocation.query.filter_by(product_ean=ean).delete()
-                processed_eans.add(ean)
-            for channel_id_str, quantity in new_channels.items():
-                if int(quantity or 0) > 0:
-                    db.session.add(Allocation(product_ean=ean, channel_id_string=channel_id_str, quantity=int(quantity), allocation_date=datetime.now()))
+            item_id = change.get('id') # This is 'ean_plantcode'
+            if not item_id or '_' not in item_id:
+                app.logger.warning(f"Skipping change due to invalid id: {item_id}")
+                continue
+            ean, _ = item_id.split('_', 1)
+            eans_to_clear.add(ean)
+
+        with db.session.begin_nested():
+            if eans_to_clear:
+                app.logger.info(f"Clearing existing allocations for EANs: {list(eans_to_clear)}")
+                Allocation.query.filter(Allocation.product_ean.in_(list(eans_to_clear))).delete(synchronize_session=False)
+
+            for change in changes:
+                item_id = change.get('id') # This is 'ean_plantcode'
+                new_channel_allocations = change.get('channels')
+
+                if not item_id or '_' not in item_id or not isinstance(new_channel_allocations, dict):
+                    app.logger.warning(f"Skipping change due to malformed data: id={item_id}, channels_type={type(new_channel_allocations)}")
+                    continue
+                
+                ean, plant_code = item_id.split('_', 1)
+                
+                for channel_id_str, quantity_str in new_channel_allocations.items():
+                    try:
+                        quantity = int(quantity_str or 0)
+                        if quantity > 0:
+                            app.logger.debug(f"Adding allocation: EAN={ean}, Plant={plant_code}, Channel={channel_id_str}, Qty={quantity}")
+                            db.session.add(Allocation(
+                                product_ean=ean,
+                                plant_code=plant_code,
+                                channel_id_string=channel_id_str,
+                                quantity=quantity,
+                                allocation_date=datetime.now()
+                            ))
+                    except ValueError:
+                        app.logger.warning(f"Invalid quantity '{quantity_str}' for EAN {ean}, Plant {plant_code}, Channel {channel_id_str}. Skipping.")
+                        
         db.session.commit()
+        app.logger.info("Manual allocations saved successfully.")
         return jsonify({'message': 'Allocations saved successfully!'}), 200
     except Exception as e:
         db.session.rollback()
@@ -385,20 +427,34 @@ def get_allocation_data():
         merged_df['stockOrigin'] = merged_df['stockOrigin'].fillna('N/A').astype(str) # Plant description
         merged_df['flagExcess6months'] = merged_df['flagExcess6months'].fillna(0).astype(int)
         merged_df['flagExcess12months'] = merged_df['flagExcess12months'].fillna(0).astype(int)
-        merged_df['bad_stock_type'] = merged_df['bad_stock_type'].fillna('').astype(str) # Add this line
-        if 'product_ean' in merged_df.columns: merged_df.drop(columns=['product_ean'], inplace=True)
+        merged_df['bad_stock_type'] = merged_df['bad_stock_type'].fillna('').astype(str)
+        if 'product_ean' in merged_df.columns and 'ean' in merged_df.columns: # Ensure 'ean' is the one to keep
+             merged_df.drop(columns=['product_ean'], inplace=True)
+
 
         db_allocations = Allocation.query.all()
+        # Allocations map: (ean, plant_code) -> channel_id -> quantity
         allocations_map = defaultdict(lambda: defaultdict(int))
-        for alloc in db_allocations: allocations_map[alloc.product_ean][alloc.channel_id_string] = alloc.quantity
+        for alloc in db_allocations:
+            allocations_map[(alloc.product_ean, alloc.plant_code)][alloc.channel_id_string] = alloc.quantity
         
         frontend_data = []
         for _, row in merged_df.iterrows():
-            ean_val, plant_code_val = str(row.get('ean', 'N/A')), str(row.get('plant', 'N/A'))
-            channel_data = {chan_id: allocations_map.get(ean_val, {}).get(chan_id, 0) for chan_id in channel_ids}
+            ean_val = str(row.get('ean', 'N/A'))
+            # 'plant' column from inventory_df (after merge) is the plant_code
+            plant_code_val = str(row.get('plant', 'N/A')) 
+            
+            # Get allocations for this specific EAN-Plant combination
+            channel_data = {
+                chan_id: allocations_map.get((ean_val, plant_code_val), {}).get(chan_id, 0)
+                for chan_id in channel_ids
+            }
+            
             item_data = {
-                'id': f"{ean_val}_{plant_code_val}", 'div': row.get('div', 'N/A'),
-                'signature': row.get('signature', 'N/A'), 'axe': row.get('axe', 'N/A'),
+                'id': f"{ean_val}_{plant_code_val}", # Composite ID for frontend row
+                'div': row.get('div', 'N/A'),
+                'signature': row.get('signature', 'N/A'), 
+                'axe': row.get('axe', 'N/A'),
                 'subAxe': row.get('subAxe', 'N/A'), 'metier': row.get('metier', 'N/A'),
                 'ean': ean_val, 'sku': row.get('sku', 'N/A'),
                 'description': row.get('description', 'N/A'), 'units': row.get('quantity', 0),

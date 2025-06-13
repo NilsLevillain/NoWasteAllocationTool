@@ -176,18 +176,19 @@ def optimize_allocation(products_df: pd.DataFrame, channels_df: pd.DataFrame, in
 
     products_df.index = products_df.index.astype(str)
     channels_df.index = channels_df.index.astype(str)
-    products = products_df.index.tolist()
-    channels = channels_df.index.tolist() # These are now 'A90', 'B10' etc.
+    products = products_df.index.tolist() # List of unique EANs
+    channels = channels_df.index.tolist() # List of unique Channel IDs
+
+    # inventory_df is already EAN-Plant specific from load_inventory_df
+    # It has 'product_ean', 'plant', 'quantity' (StockToAllocate), 'available_stock'
+    ean_plant_pairs = list(inventory_df[['product_ean', 'plant']].itertuples(index=False, name=None))
+    logger.debug(f"Found {len(ean_plant_pairs)} EAN-Plant combinations from inventory_df.")
+
+    stock_to_allocate_per_ean_plant = inventory_df.set_index(['product_ean', 'plant'])['quantity'].to_dict()
+    logger.debug(f"StockToAllocate per EAN-Plant: {len(stock_to_allocate_per_ean_plant)} entries.")
     
-    # inventory_df['quantity'] is StockToAllocate
-    # inventory_df['available_stock'] is AvailableStock
-    # Both are already loaded by load_inventory_df in utils.py
-    
-    stock_to_allocate_per_ean = inventory_df.groupby('product_ean')['quantity'].sum().to_dict()
-    logger.debug(f"Total stock to allocate by product: {stock_to_allocate_per_ean}")
-    
-    available_stock_per_ean = inventory_df.groupby('product_ean')['available_stock'].sum().to_dict()
-    logger.debug(f"Total available stock by product: {available_stock_per_ean}")
+    available_stock_per_ean_plant = inventory_df.set_index(['product_ean', 'plant'])['available_stock'].to_dict()
+    logger.debug(f"AvailableStock per EAN-Plant: {len(available_stock_per_ean_plant)} entries.")
 
     coverage_rules_dict = {(r.channel_id, r.abc_class): r.coverage_days for r in parameters.coverage_days_rules}
     outlet_capacity_dict = {(r.channel_id, r.division, r.axe): r.max_skus for r in parameters.outlet_sku_capacity_rules}
@@ -210,94 +211,127 @@ def optimize_allocation(products_df: pd.DataFrame, channels_df: pd.DataFrame, in
 
     logger.info("Defining PuLP model and variables.")
     model = pulp.LpProblem("InventoryAllocation", pulp.LpMaximize)
-    x = pulp.LpVariable.dicts("allocation_qty", ((p, c) for p in products for c in channels), lowBound=0, cat='Integer')
-    y = pulp.LpVariable.dicts("is_allocated", ((p, c) for p in products for c in channels), cat='Binary')
-    model += (pulp.lpSum(x[p, c] for p in products for c in channels), "Maximize_Total_Allocation")
+    
+    # Decision variable for quantity allocated from a specific EAN-Plant to a Channel
+    x = pulp.LpVariable.dicts("allocation_qty", 
+                               ((p, plant, c) for p, plant in ean_plant_pairs for c in channels), 
+                               lowBound=0, cat='Integer')
+    
+    # Binary variable indicating if EAN p from Plant plant is allocated to Channel c
+    y_ean_plant_channel = pulp.LpVariable.dicts("is_allocated_from_plant", 
+                                                ((p, plant, c) for p, plant in ean_plant_pairs for c in channels), 
+                                                cat='Binary')
+    
+    # Auxiliary binary variable: is EAN p allocated to Channel c (from ANY plant)? Used for SKU counting constraints.
+    y_ean_channel = pulp.LpVariable.dicts("is_ean_allocated_to_channel", 
+                                          ((p, c) for p in products for c in channels), 
+                                          cat='Binary')
+
+    model += (pulp.lpSum(x[p, plant, c] for p, plant in ean_plant_pairs for c in channels), "Maximize_Total_Allocation")
     logger.debug("Objective function added: Maximize_Total_Allocation.")
 
-    logger.info("Adding supply constraints.")
-    for p in products:
-        # Get StockToAllocate for product p
-        s_to_allocate_p = stock_to_allocate_per_ean.get(p, 0)
-        # Get AvailableStock for product p
-        a_stock_p = available_stock_per_ean.get(p, 0)
+    logger.info("Adding supply constraints (per EAN-Plant).")
+    for p, plant_code in ean_plant_pairs:
+        s_to_allocate = stock_to_allocate_per_ean_plant.get((p, plant_code), 0)
+        a_stock = available_stock_per_ean_plant.get((p, plant_code), 0)
+        max_allocatable_at_plant = min(s_to_allocate, a_stock)
         
-        # Maximum allocatable quantity is the minimum of the two
-        max_allocatable_for_p = min(s_to_allocate_p, a_stock_p)
-        
-        model += pulp.lpSum(x[p, c] for c in channels) <= max_allocatable_for_p, f"Supply_Product_{p}"
-        logger.debug(f"Supply constraint for P:{p}: sum(alloc) <= {max_allocatable_for_p} (StockToAllocate: {s_to_allocate_p}, AvailableStock: {a_stock_p})")
-    
-    logger.info("Adding outlet SKU capacity constraints.")
+        model += pulp.lpSum(x[p, plant_code, c] for c in channels) <= max_allocatable_at_plant, f"Supply_Product_{p}_Plant_{plant_code}"
+        logger.debug(f"Supply constraint for P:{p} Plant:{plant_code}: sum(alloc) <= {max_allocatable_at_plant} (StockToAllocate: {s_to_allocate}, AvailableStock: {a_stock})")
+
+    logger.info("Linking allocation quantity (x) with plant-level decision (y_ean_plant_channel) and EAN-level decision (y_ean_channel).")
+    for p_ean, plant_code_specific in ean_plant_pairs:
+        M_val_plant = min(stock_to_allocate_per_ean_plant.get((p_ean, plant_code_specific), 0), 
+                          available_stock_per_ean_plant.get((p_ean, plant_code_specific), 0))
+        for c_channel in channels:
+            # Link x[p,plant,c] to y_ean_plant_channel[p,plant,c]
+            if M_val_plant > 0:
+                model += x[p_ean, plant_code_specific, c_channel] <= M_val_plant * y_ean_plant_channel[p_ean, plant_code_specific, c_channel], f"Link_x_y_plant_P{p_ean}_Pl{plant_code_specific}_C{c_channel}"
+            else: # No stock at this plant for this EAN
+                model += x[p_ean, plant_code_specific, c_channel] == 0, f"Force_x_zero_NoInv_P{p_ean}_Pl{plant_code_specific}_C{c_channel}"
+                model += y_ean_plant_channel[p_ean, plant_code_specific, c_channel] == 0, f"Force_y_plant_zero_NoInv_P{p_ean}_Pl{plant_code_specific}_C{c_channel}"
+
+    # Link y_ean_plant_channel to y_ean_channel
+    for p_ean in products: # Iterate over unique EANs
+        plants_for_this_ean = [pl for ean_tuple, pl in ean_plant_pairs if ean_tuple == p_ean]
+        if not plants_for_this_ean: continue # Should not happen if products list is derived from ean_plant_pairs
+
+        for c_channel in channels:
+            # If any y_ean_plant_channel[p, plant, c] is 1, then y_ean_channel[p,c] must be 1
+            for pl_specific in plants_for_this_ean:
+                model += y_ean_plant_channel[p_ean, pl_specific, c_channel] <= y_ean_channel[p_ean, c_channel], f"Link_yPlant_yEAN_P{p_ean}_Pl{pl_specific}_C{c_channel}"
+            
+            # If y_ean_channel[p,c] is 1, at least one y_ean_plant_channel[p, plant, c] must be 1 (this is implicitly handled by the above and objective)
+            # More strongly: y_ean_channel[p,c] <= sum(y_ean_plant_channel[p,plant,c] for plant in plants_for_this_ean)
+            model += y_ean_channel[p_ean, c_channel] <= pulp.lpSum(y_ean_plant_channel[p_ean, pl_specific, c_channel] for pl_specific in plants_for_this_ean), f"Link_yEAN_sum_yPlant_P{p_ean}_C{c_channel}"
+            
+    logger.info("Adding outlet SKU capacity constraints (using y_ean_channel).")
     for c in channels: 
         channel_type = channels_df.loc[c, 'channel_type']
         if channel_type == 'outlet':
-            for (division, axe), group_products in products_by_outlet_capacity_group.items():
+            for (division, axe), group_products_eans in products_by_outlet_capacity_group.items(): # group_products_eans contains EANs
                 max_skus = outlet_capacity_dict.get((c, division, axe))
                 if max_skus is not None and max_skus >= 0:
-                    model += pulp.lpSum(y[pg, c] for pg in group_products if pg in products) <= max_skus, f"Outlet_Capacity_SKU_{c}_{division}_{axe}"
-                    logger.debug(f"Added SKU capacity constraint for channel {c}, div {division}, axe {axe}: max {max_skus} SKUs.")
+                    # Sum over y_ean_channel for EANs in this group
+                    model += pulp.lpSum(y_ean_channel[pg_ean, c] for pg_ean in group_products_eans if pg_ean in products) <= max_skus, f"Outlet_Capacity_SKU_{c}_{division}_{axe}"
+                    logger.debug(f"Added SKU capacity constraint for channel {c}, div {division}, axe {axe}: max {max_skus} SKUs (EAN level).")
 
-    logger.info("Adding coverage days and new SKU push constraints.")
+    logger.info("Adding coverage days and new SKU push constraints (sum of x over plants for an EAN-Channel).")
     for c in channels: 
-        for p in products:
-            abc_class = product_channel_abc_map.get((p, c), 'C') 
-            current_stock_for_pc = existing_stock_dict.get((p, c), 0)
+        for p_ean in products: # p_ean is an EAN
+            plants_for_this_ean = [pl for ean_tuple, pl in ean_plant_pairs if ean_tuple == p_ean]
+            if not plants_for_this_ean: continue
+
+            abc_class = product_channel_abc_map.get((p_ean, c), 'C') 
+            current_stock_for_pc = existing_stock_dict.get((p_ean, c), 0) # This is EAN-Channel level existing stock
+
             if abc_class == 'NEW':
-                div, sub = products_df.loc[p].get('division'), products_df.loc[p].get('subaxis')
+                div, sub = products_df.loc[p_ean].get('division'), products_df.loc[p_ean].get('subaxis')
                 push_qty = push_new_sku_lookup.get((div, sub), 0) if div and sub else 0
-                model += x[p, c] <= push_qty, f"Push_New_SKU_{p}_{c}"
-                logger.debug(f"Push new SKU constraint for P:{p} C:{c} (NEW): qty <= {push_qty}")
+                # Sum of allocations for this EAN to this Channel, across all plants, must be <= push_qty
+                model += pulp.lpSum(x[p_ean, pl_specific, c] for pl_specific in plants_for_this_ean) <= push_qty, f"Push_New_SKU_{p_ean}_{c}"
+                logger.debug(f"Push new SKU constraint for EAN:{p_ean} C:{c} (NEW): sum_plants(qty) <= {push_qty}")
             else: 
                 cov_days = coverage_rules_dict.get((c, abc_class)) 
                 if cov_days is not None and cov_days >= 0:
-                    adj_demand = demand_dict.get((p, c), 0) * parameters.seasonality_coefficient 
+                    adj_demand = demand_dict.get((p_ean, c), 0) * parameters.seasonality_coefficient # EAN-Channel demand
                     if adj_demand > 0:
                         allow_alloc = max(0, (adj_demand / 7.0) * cov_days - current_stock_for_pc)
-                        model += x[p, c] <= allow_alloc, f"Max_Coverage_Days_{p}_{c}"
-                        logger.debug(f"Coverage constraint for P:{p} C:{c} (ABC:{abc_class}): qty <= {allow_alloc} (demand:{adj_demand}, stock:{current_stock_for_pc}, cov_days:{cov_days})")
+                        # Sum of allocations for this EAN to this Channel, across all plants
+                        model += pulp.lpSum(x[p_ean, pl_specific, c] for pl_specific in plants_for_this_ean) <= allow_alloc, f"Max_Coverage_Days_{p_ean}_{c}"
+                        logger.debug(f"Coverage constraint for EAN:{p_ean} C:{c} (ABC:{abc_class}): sum_plants(qty) <= {allow_alloc}")
                     else: 
-                        model += x[p, c] <= 0, f"Max_Coverage_Days_Zero_Demand_{p}_{c}"
-                        logger.debug(f"Coverage constraint for P:{p} C:{c} (ABC:{abc_class}): Zero demand, qty <= 0")
+                        model += pulp.lpSum(x[p_ean, pl_specific, c] for pl_specific in plants_for_this_ean) <= 0, f"Max_Coverage_Days_Zero_Demand_{p_ean}_{c}"
+                        logger.debug(f"Coverage constraint for EAN:{p_ean} C:{c} (ABC:{abc_class}): Zero demand, sum_plants(qty) <= 0")
     
     if parameters.restricted_brands_for_donation:
         logger.info("Adding restricted brands for donation constraints.")
         don_chans_from_df = channels_df[channels_df['channel_type'] == 'donation'].index.tolist()
         if don_chans_from_df: 
             restr_brands = set(parameters.restricted_brands_for_donation)
-            for p in products:
-                if products_df.loc[p].get('brand') in restr_brands:
-                    for dc in don_chans_from_df: 
-                        if dc in channels: 
-                            model += x[p, dc] == 0, f"Restricted_Brand_{products_df.loc[p].get('brand')}_Prod_{p}_Chan_{dc}"
-                            logger.debug(f"Restricted brand {products_df.loc[p].get('brand')} for P:{p} in donation channel {dc}.")
+            for p_ean in products:
+                if products_df.loc[p_ean].get('brand') in restr_brands:
+                    plants_for_this_ean = [pl for ean_tuple, pl in ean_plant_pairs if ean_tuple == p_ean]
+                    for dc_channel in don_chans_from_df: 
+                        if dc_channel in channels: 
+                            for pl_specific in plants_for_this_ean:
+                                model += x[p_ean, pl_specific, dc_channel] == 0, f"Restricted_Brand_{products_df.loc[p_ean].get('brand')}_P{p_ean}_Pl{pl_specific}_C{dc_channel}"
+                                logger.debug(f"Restricted brand {products_df.loc[p_ean].get('brand')} for P:{p_ean} Pl:{pl_specific} in donation channel {dc_channel}.")
     
-    logger.info("Adding outlet assortment constraints.")
+    logger.info("Adding outlet assortment constraints (using y_ean_channel).")
     for c_out in outlet_channels: 
         if c_out not in channels: 
             logger.warning(f"Outlet channel {c_out} from outlet_channels list not in main channels list. Skipping assortment rules for it.")
             continue 
-        for (metier, subaxis, brand), group_products in products_by_outlet_assortment_group.items():
+        for (metier, subaxis, brand), group_products_eans in products_by_outlet_assortment_group.items(): # group_products_eans contains EANs
             max_skus = outlet_assortment_dict.get((metier, subaxis, brand)) 
             if max_skus is not None and max_skus >= 0:
-                model += pulp.lpSum(y[pg, c_out] for pg in group_products if pg in products) <= max_skus, f"Outlet_Assortment_{c_out}_{metier}_{subaxis}_{brand}"
-                logger.debug(f"Added assortment constraint for outlet {c_out}, metier {metier}, subaxis {subaxis}, brand {brand}: max {max_skus} SKUs.")
+                # Sum over y_ean_channel for EANs in this group
+                model += pulp.lpSum(y_ean_channel[pg_ean, c_out] for pg_ean in group_products_eans if pg_ean in products) <= max_skus, f"Outlet_Assortment_{c_out}_{metier}_{subaxis}_{brand}"
+                logger.debug(f"Added assortment constraint for outlet {c_out}, metier {metier}, subaxis {subaxis}, brand {brand}: max {max_skus} SKUs (EAN level).")
 
-    logger.info("Linking allocation quantity (x) and allocation decision (y) variables.")
-    for p in products:
-        # M_val should be based on the actual maximum possible allocation for product p,
-        # which is min(StockToAllocate, AvailableStock)
-        s_to_allocate_p = stock_to_allocate_per_ean.get(p, 0)
-        a_stock_p = available_stock_per_ean.get(p, 0)
-        M_val = min(s_to_allocate_p, a_stock_p)
-        
-        for c in channels:
-            if M_val > 0:
-                model += x[p, c] <= M_val * y[p, c], f"Link_x_y_Prod_{p}_Chan_{c}"
-                model += y[p, c] * M_val >= x[p, c], f"Link_y_x_Prod_{p}_Chan_{c}" 
-            else: 
-                model += x[p, c] == 0, f"Force_x_zero_NoInv_Prod_{p}_Chan_{c}"
-                model += y[p, c] == 0, f"Force_y_zero_NoInv_Prod_{p}_Chan_{c}"
+    # Linking constraints for x[p,plant,c] and y_ean_plant_channel[p,plant,c] are already done above.
+    # Linking constraints for y_ean_plant_channel[p,plant,c] and y_ean_channel[p,c] are also done above.
 
     logger.info("Writing LP model to allocation_model.lp")
     model.writeLP("allocation_model.lp")
@@ -309,9 +343,18 @@ def optimize_allocation(products_df: pd.DataFrame, channels_df: pd.DataFrame, in
     results = []
     if status_string == 'Optimal':
         logger.info("Optimal solution found. Extracting results.")
-        results = [{'product_sku': p, 'channel_id': c, 'quantity': int(round(x[p,c].varValue))} 
-                   for p in products for c in channels if x[p,c].varValue is not None and x[p,c].varValue > 0.1]
-        logger.info(f"Extracted {len(results)} allocation entries.")
+        results = []
+        for p_ean, plant_code in ean_plant_pairs:
+            for c_channel in channels:
+                var_value = x[p_ean, plant_code, c_channel].varValue
+                if var_value is not None and var_value > 0.1: # Using 0.1 to handle potential float inaccuracies
+                    results.append({
+                        'product_sku': p_ean,          # EAN
+                        'plant_code': plant_code,      # Plant Code
+                        'channel_id': c_channel,       # Channel ID
+                        'quantity': int(round(var_value))
+                    })
+        logger.info(f"Extracted {len(results)} allocation entries (EAN-Plant-Channel).")
     else:
         logger.warning(f"Optimization was not optimal. Status: {status_string}. No results extracted.")
     return model, status_string, results
@@ -370,10 +413,15 @@ if __name__ == '__main__':
             logger.critical("No channels loaded from ChannelList.xlsx. Cannot proceed.")
             raise ValueError("No channels loaded from ChannelList.xlsx.")
 
-        inventory_df = load_inventory_df(
+        inventory_df = load_inventory_df( # This now returns EAN-Plant level data
             bad_stock_file,
-            ean_col='ean_code',
-            qty_col='StockToAllocate'
+            ean_col='ean_code', # Correct parameter name for ean column in bad_stock_inventory.csv
+            qty_col='StockToAllocate',
+            available_stock_col='AvailableStock', # Ensure this is passed
+            plant_code_col='plant', # Ensure this is passed
+            plant_desc_col='plant_description', # Ensure this is passed
+            flag6_col='FlagExcess6months', # Ensure this is passed
+            flag12_col='FlagExcess12months' # Ensure this is passed
         )
         
         existing_stock_dict = load_existing_stock_dict(

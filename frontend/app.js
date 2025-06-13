@@ -962,12 +962,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Prepare data to send to the backend
+        // Backend expects a list of {'id': 'ean_plantcode', 'channels': {'channel_id': qty, ...}}
         const changesToSave = allocationData.map(item => ({
-            ean: item.ean,
-            channels: item.channels || {} // Send the updated channel allocations, ensure it's an object
+            id: item.id, // This is 'ean_plantcode'
+            channels: item.channels || {} // Send the updated channel allocations for this specific ean_plantcode
         }));
 
-        console.log("Data to save:", changesToSave);
+        console.log("Data to save (EAN-Plant specific):", changesToSave);
 
         const saveBtn = document.getElementById('save-allocation');
         const originalText = saveBtn.innerHTML;
