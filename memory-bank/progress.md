@@ -52,6 +52,10 @@
     - **Frontend Logic (`frontend/app.js`):**
         - `saveAllocation` function updated to send EAN-Plant specific data to the backend.
         - Other frontend components (`handleAllocationChange`, table rendering) were already largely compatible with EAN-Plant granularity due to the existing `item.id` structure (`ean_plantcode`).
+- **Refactored ABC Classification to Use `ABC_ranking.csv` (June 2025)**:
+    - **Solver (`backend/solver.py`):** The `calculate_abc_classification_and_new_skus` function was successfully refactored to derive ABC classes from `data/InputData/ABC_ranking.csv`. The logic for "NEW" SKUs (not in file and no stock) and default 'C' classification (not in file but has stock) was implemented. The function signature was updated, and logging was adapted.
+    - **API Logic (`main.py`):** Calls to `calculate_abc_classification_and_new_skus` in the `/api/auto_allocate` and `/api/ean_deep_dive_data` endpoints were updated to use the new function signature, including passing the path to `ABC_ranking.csv`.
+    - **Unit Tests (`tests/test_solver.py`):** Comprehensive unit tests were added for the refactored `calculate_abc_classification_and_new_skus` function, covering various scenarios including file-based lookup, NEW SKU logic, default 'C' logic, empty/missing ranking file, and handling of non-standard ABC classes. Mocking is used for CSV file reading. Old sellout-based ABC tests were removed.
 
 ## Remaining Work
 - Continue refinement of the optimization engine constraints and objective function as outlined in `activeContext.md`.
@@ -64,7 +68,7 @@
 ## Current Status
 - Data ingestion and preprocessing layer is now stable and well-tested.
 - Core optimization logic is integrated with the new data loading utilities.
-- `/api/auto_allocate` endpoint correctly saves allocations to the database, and the frontend now accurately reflects these changes. The "NEW SKU" logic used by this endpoint is updated.
+- `/api/auto_allocate` endpoint correctly saves allocations to the database. The ABC classification logic used by this endpoint and `/api/ean_deep_dive_data` now sources from `ABC_ranking.csv`, and the "NEW SKU" definition is updated accordingly.
 - The `/api/allocation_data` endpoint is now functional again, serving allocation data sourced from the database.
 - Client-side handling of the auto-allocation process in `frontend/app.js` is more robust.
 - The "EAN Allocation Deep Dive" feature is now functional, providing detailed EAN-specific data.
@@ -72,5 +76,6 @@
 - Core allocation logic now respects plant-level stock constraints, providing more accurate optimization.
 - Database and APIs updated to handle EAN-Plant-Channel granularity for allocations.
 - Frontend correctly displays and allows manual editing of EAN-Plant specific allocations.
+- Unit tests for the new ABC classification logic have been implemented in `tests/test_solver.py`.
 - Ready to proceed with further development on optimization logic and UI, with a solid foundation for data handling and display.
 - *Ongoing*: Addressing the "out of application context" error in the unit tests for the `/api/ean_deep_dive_data` endpoint.

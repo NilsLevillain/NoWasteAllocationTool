@@ -81,11 +81,12 @@ The system implements the Observer pattern to notify various components when opt
         - Bad stock inventory (`bad_stock_inventory.csv`) via `load_inventory_df` (which provides EAN-Plant level stock).
         - Existing in-store and in-transit stock (`in_store_inventory.csv`, `stock_in_transit.csv`) via `load_existing_stock_dict`.
         - Channel list (`ChannelList.xlsx`) via `load_channels_df`.
-        - Sellout data (`sellout.csv`) via `pd.read_csv` and `load_demand_dict`.
-        - In-store inventory (again, for ABC) via `pd.read_csv`.
+        - Sellout data (`sellout.csv`) via `pd.read_csv` and `load_demand_dict` (used for channel performance, not directly for ABC in this endpoint anymore).
+        - In-store inventory (`in_store_inventory.csv`) via `pd.read_csv` (used as input for `calculate_abc_classification_and_new_skus`).
+        - ABC ranking data (`ABC_ranking.csv`) is now read by `calculate_abc_classification_and_new_skus`.
         - All rule Excel files via `load_optimization_rules`.
         - Final allocations from the `Allocation` database table (which includes `plant_code`).
-    - It calls `calculate_abc_classification_and_new_skus` to determine the ABC/NEW status for the EAN across channels.
+    - It calls `calculate_abc_classification_and_new_skus` (which now uses `ABC_ranking.csv` and `in_store_inventory.csv`) to determine the ABC/NEW status for the EAN across channels.
     - The collected and processed data is returned as a structured JSON to the `frontend/ean_deep_dive.html` page.
 
 ## Error Handling Patterns

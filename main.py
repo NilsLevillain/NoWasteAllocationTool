@@ -191,16 +191,19 @@ def get_ean_deep_dive_data_logic(ean_code: str):
         
         channels_df = load_channels_df(channellist_file_path) # Reload for consistency, or pass channels_df_for_stock
         sellout_df_full = pd.read_csv(sellout_file_path, dtype={'barcode': str, 'store_code': str})
-        ean_sellout_df = sellout_df_full[sellout_df_full['barcode'] == ean_code]
+        ean_sellout_df = sellout_df_full[sellout_df_full['barcode'] == ean_code] # Still needed for channel performance sellout_qty
         in_store_inv_df_for_abc = pd.read_csv(instore_stock_file_path, dtype={'store_code': str, 'barcode': str})
         single_ean_product_master_df = products_df_full[products_df_full.index == ean_code]
+        
+        abc_ranking_file_path = os.path.join(base_data_path, 'InputData', 'ABC_ranking.csv')
         product_channel_abc_map_full = {}
         if not single_ean_product_master_df.empty:
             product_channel_abc_map_full = calculate_abc_classification_and_new_skus(
-                sellout_df=ean_sellout_df, product_master_df=single_ean_product_master_df,
-                all_channel_ids=channels_df.index.tolist(), sellout_ean_col='barcode',
-                sellout_channel_col='store_code', sellout_qty_col='total_items_weekly',
-                in_store_inventory_df=in_store_inv_df_for_abc)
+                product_master_df=single_ean_product_master_df,
+                all_channel_ids=channels_df.index.tolist(),
+                in_store_inventory_df=in_store_inv_df_for_abc,
+                abc_ranking_file_path=abc_ranking_file_path
+            )
         
         demand_dict_full = load_demand_dict(sellout_file_path, ean_col='barcode', channel_col='store_code', demand_qty_col='total_items_weekly')
         for ch_id_str, ch_row in channels_df.iterrows():
@@ -298,15 +301,16 @@ def auto_allocate_endpoint():
             push_new_sku_rules=push_new_sku_rules, restricted_brands_for_donation=['BrandB'] # Example
         )
         existing_stock_dict = load_existing_stock_dict(instore_stock_file_path, intransit_stock_file_path)
-        raw_sellout_df = pd.read_csv(sellout_file_path, dtype={'barcode': str, 'store_code': str})
+        # raw_sellout_df is no longer directly passed to calculate_abc_classification_and_new_skus
         try: raw_in_store_inventory_df = pd.read_csv(instore_stock_file_path, dtype={'store_code': str, 'barcode': str})
         except FileNotFoundError: raw_in_store_inventory_df = pd.DataFrame(columns=['store_code', 'barcode', 'physical_quantity'])
         
+        abc_ranking_file_path = os.path.join(base_data_path, 'InputData', 'ABC_ranking.csv')
         product_channel_abc_map = calculate_abc_classification_and_new_skus(
-            sellout_df=raw_sellout_df, product_master_df=products_df,
-            all_channel_ids=channels_df.index.tolist(), sellout_ean_col='barcode',
-            sellout_channel_col='store_code', sellout_qty_col='total_items_weekly',
-            in_store_inventory_df=raw_in_store_inventory_df
+            product_master_df=products_df,
+            all_channel_ids=channels_df.index.tolist(),
+            in_store_inventory_df=raw_in_store_inventory_df,
+            abc_ranking_file_path=abc_ranking_file_path
         )
         
         model, status, allocation_results = optimize_allocation(

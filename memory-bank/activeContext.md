@@ -5,7 +5,9 @@
           1. **Optimization Engine Refinement**
              - Defining all the constraints to respect business need
 	     -  Modifying the objective function to take into account all the edge cases : in order to allocate best products in best channels, we need to have a ranking of the product & a ranking of the channel in this function
-             - **Refined "NEW SKU" Definition**: Updated `calculate_abc_classification_and_new_skus` in `backend/solver.py` and its usage in `main.py` (`/api/auto_allocate`) to define "NEW" SKUs as those with no sales data AND no in-store stock in a specific channel. Products with no sales but with stock are now classified as 'C'.
+             - **ABC Classification Source Update**: The `calculate_abc_classification_and_new_skus` function in `backend/solver.py` has been refactored. It now sources ABC classifications directly from `data/InputData/ABC_ranking.csv` instead of calculating them from sellout data.
+             - **"NEW" SKU Logic Preservation**: The logic for identifying "NEW" SKUs (not 'A', 'B', or 'C' in `ABC_ranking.csv` AND no in-store stock for the EAN-Channel) has been maintained.
+             - **Default Classification for Unranked Stocked Items**: EAN-Channel combinations not found in `ABC_ranking.csv` but having existing in-store stock are now classified as 'C'.
 
           2. **User Interface Enhancements**
              - Redesigning the results visualization dashboard
@@ -91,6 +93,18 @@
                 - `saveAllocation` function updated to send EAN-Plant specific data (using `item.id` which is `ean_plantcode`) to the `/api/save_allocations` endpoint.
                 - `handleAllocationChange` remains largely compatible due to the existing `item.id` structure.
                 - No changes were required for `frontend/index.html` as the table structure already supported EAN-Plant rows.
+          - **Refactored ABC Classification to Use `ABC_ranking.csv` (June 2025)**:
+            - Modified `backend/solver.py`:
+                - The `calculate_abc_classification_and_new_skus` function was refactored to read ABC classes from `data/InputData/ABC_ranking.csv` (semicolon-delimited).
+                - Sellout-based calculation parameters were removed from its signature.
+                - Logic for "NEW" SKUs (not A/B/C in file AND no in-store stock) and default 'C' (not in file BUT has stock) was implemented.
+                - Return type (`product_channel_abc_map`) and existing logging patterns were preserved and adapted.
+            - Updated `main.py`:
+                - Calls to `calculate_abc_classification_and_new_skus` in `/api/auto_allocate` and `/api/ean_deep_dive_data` were updated with the new parameters (passing `abc_ranking_file_path`).
+            - Implemented `tests/test_solver.py`:
+                - Added comprehensive unit tests for the refactored `calculate_abc_classification_and_new_skus`.
+                - Tests cover scenarios like normal ABC lookup, missing products, NEW SKU identification, default 'C' for stocked unranked items, empty ranking file, and handling of non-standard ABC classes in the file.
+                - Mocking of `pd.read_csv` for `ABC_ranking.csv` and `in_store_inventory.csv` is used for deterministic testing.
                     
 ## Learnings from User Testing
           - Users prefer tabular views with sorting/filtering over purely graphical representations

@@ -49,122 +49,103 @@ if __name__ != "__main__":
 
 # --- ABC Classification Function ---
 def calculate_abc_classification_and_new_skus(
-    sellout_df: pd.DataFrame,
     product_master_df: pd.DataFrame,
-    all_channel_ids: list, # Now specific channel IDs like 'A90', 'B10'
-    sellout_ean_col: str,
-    sellout_channel_col: str, # This is 'store_code' from sellout.csv
-    sellout_qty_col: str,
-    in_store_inventory_df: pd.DataFrame # New parameter for in-store stock
+    all_channel_ids: list, # Specific channel IDs like 'A90', 'B10'
+    in_store_inventory_df: pd.DataFrame, # Expected to have 'barcode', 'store_code', 'physical_quantity'
+    abc_ranking_file_path: str # Path to ABC_ranking.csv
 ):
     product_channel_abc_map = {}
+    logger.info(f"Starting ABC classification using file: {abc_ranking_file_path}")
 
-    logger.debug(f"Starting ABC classification. Sellout EAN col: {sellout_ean_col}, Channel col: {sellout_channel_col}, Qty col: {sellout_qty_col}")
-    
-    # Process in-store inventory data
-    logger.debug("Processing in-store inventory data for NEW SKU classification.")
-    # Ensure correct types, using provided column names directly
-    in_store_inventory_df[sellout_ean_col] = in_store_inventory_df['barcode'].astype(str) # Assuming 'barcode' is EAN
-    in_store_inventory_df[sellout_channel_col] = in_store_inventory_df['store_code'].astype(str) # Assuming 'store_code' is channel
-    in_store_inventory_df['physical_quantity'] = pd.to_numeric(in_store_inventory_df['physical_quantity'], errors='coerce').fillna(0)
-    
-    # Filter for positive stock and create a set of (ean, channel) tuples
-    stocked_df = in_store_inventory_df[in_store_inventory_df['physical_quantity'] > 0]
-    stocked_product_channel_pairs = set()
-    if not stocked_df.empty:
-        # Group by channel and EAN, sum quantities (though sum isn't strictly needed for existence check if filtered by >0)
-        # Using the sellout_channel_col and sellout_ean_col for consistency if they map to 'store_code' and 'barcode'
-        # If in_store_inventory_df uses different names, direct names 'store_code', 'barcode' should be used here.
-        # For this implementation, assuming 'barcode' and 'store_code' are the actual column names in in_store_inventory_df
-        # and sellout_ean_col, sellout_channel_col are passed as 'barcode' and 'store_code' respectively when this function is called.
+    # 1. Process in-store inventory to identify stocked EAN-channel pairs
+    logger.debug("Processing in-store inventory data for NEW SKU and default 'C' logic.")
+    # Ensure correct types for relevant columns from in_store_inventory_df
+    # These column names are fixed based on the expected structure of in_store_inventory.csv
+    if not in_store_inventory_df.empty:
+        in_store_inventory_df['barcode'] = in_store_inventory_df['barcode'].astype(str)
+        in_store_inventory_df['store_code'] = in_store_inventory_df['store_code'].astype(str)
+        in_store_inventory_df['physical_quantity'] = pd.to_numeric(in_store_inventory_df['physical_quantity'], errors='coerce').fillna(0)
         
-        # Corrected to use actual column names from in_store_inventory_df for creating the set
-        stocked_product_channel_pairs = set(zip(stocked_df['barcode'].astype(str), stocked_df['store_code'].astype(str)))
-        logger.debug(f"Found {len(stocked_product_channel_pairs)} product-channel pairs with existing stock.")
+        stocked_df = in_store_inventory_df[in_store_inventory_df['physical_quantity'] > 0]
+        stocked_product_channel_pairs = set()
+        if not stocked_df.empty:
+            stocked_product_channel_pairs = set(zip(stocked_df['barcode'], stocked_df['store_code']))
+            logger.debug(f"Found {len(stocked_product_channel_pairs)} product-channel pairs with existing stock from in_store_inventory_df.")
+        else:
+            logger.debug("No product-channel pairs with existing stock found in in_store_inventory_df (after filtering for positive quantity).")
     else:
-        logger.debug("No product-channel pairs with existing stock found in in_store_inventory_df.")
+        logger.debug("In-store inventory data is empty. No stocked product-channel pairs to identify.")
+        stocked_product_channel_pairs = set()
 
-    sellout_df[sellout_ean_col] = sellout_df[sellout_ean_col].astype(str)
-    sellout_df[sellout_channel_col] = sellout_df[sellout_channel_col].astype(str)
-    sellout_df[sellout_qty_col] = pd.to_numeric(sellout_df[sellout_qty_col], errors='coerce').fillna(0)
-    
-    # Pre-aggregate sellout by channel and EAN
-    logger.debug("Aggregating sellout data by channel and EAN.")
-    channel_product_sales_agg = sellout_df.groupby([sellout_channel_col, sellout_ean_col])[sellout_qty_col].sum().reset_index()
 
-    for channel_id_from_list in all_channel_ids: # e.g., 'A90', 'B10' from ChannelList.xlsx
-        logger.debug(f"Processing ABC for channel_id: {channel_id_from_list}")
-        # Filter aggregated sales for the current channel_id from the list
-        # sellout_channel_col is the column in sellout_df that matches channel_id_from_list (e.g. 'store_code')
-        channel_sales = channel_product_sales_agg[channel_product_sales_agg[sellout_channel_col] == channel_id_from_list].copy()
+    # 2. Read ABC_ranking.csv
+    logger.debug(f"Reading ABC ranking data from: {abc_ranking_file_path}")
+    try:
+        # Specify dtype for barcode and store_code to handle them as strings,
+        # especially if barcode can be numeric/scientific.
+        abc_ranking_df = pd.read_csv(
+            abc_ranking_file_path, 
+            sep=';', 
+            dtype={'barcode': str, 'store_code': str, 'abc_class': str}
+        )
+        # Ensure 'barcode' (EAN) and 'store_code' (channel) are strings and not NaN
+        abc_ranking_df['barcode'] = abc_ranking_df['barcode'].astype(str).fillna('')
+        abc_ranking_df['store_code'] = abc_ranking_df['store_code'].astype(str).fillna('')
+        abc_ranking_df['abc_class'] = abc_ranking_df['abc_class'].astype(str).fillna('')
 
-        if channel_sales.empty:
-            logger.info(f"No sales data for channel {channel_id_from_list}. Marking all products as 'NEW'.")
-            for product_ean in product_master_df.index:
-                product_channel_abc_map[(product_ean, channel_id_from_list)] = 'NEW'
-            continue
+        # Filter out rows where essential data might be missing after conversion (e.g. if original was NaN)
+        abc_ranking_df = abc_ranking_df[
+            (abc_ranking_df['barcode'] != '') & 
+            (abc_ranking_df['store_code'] != '') & 
+            (abc_ranking_df['abc_class'] != '')
+        ]
+        logger.info(f"Successfully loaded {len(abc_ranking_df)} valid rows from {abc_ranking_file_path}.")
+    except FileNotFoundError:
+        logger.error(f"ABC ranking file not found: {abc_ranking_file_path}. All products will be classified based on stock (C or NEW).")
+        abc_ranking_df = pd.DataFrame(columns=['barcode', 'store_code', 'abc_class']) # Empty DataFrame
+    except Exception as e:
+        logger.error(f"Error reading ABC ranking file {abc_ranking_file_path}: {e}. All products will be classified based on stock (C or NEW).")
+        abc_ranking_df = pd.DataFrame(columns=['barcode', 'store_code', 'abc_class'])
 
-        channel_sales = channel_sales.sort_values(by=sellout_qty_col, ascending=False)
-        channel_sales['cumulative_sales'] = channel_sales[sellout_qty_col].cumsum()
-        total_channel_sales = channel_sales[sellout_qty_col].sum()
-        logger.debug(f"Total sales for channel {channel_id_from_list}: {total_channel_sales}")
+    # Create a lookup map from ABC_ranking.csv: {(ean, channel): abc_class}
+    abc_lookup_map = {}
+    if not abc_ranking_df.empty:
+        for _, row in abc_ranking_df.iterrows():
+            # Ensure EAN (barcode) and channel (store_code) are treated as strings for keys
+            ean_key = str(row['barcode'])
+            channel_key = str(row['store_code'])
+            abc_lookup_map[(ean_key, channel_key)] = str(row['abc_class']).upper() # Standardize to uppercase
+        logger.debug(f"Created ABC lookup map with {len(abc_lookup_map)} entries from ABC_ranking.csv.")
 
-        if total_channel_sales == 0:
-            logger.info(f"Total sales are zero for channel {channel_id_from_list}. Marking existing as 'C', others as 'NEW'.")
-            for product_ean in product_master_df.index:
-                if product_ean in channel_sales[sellout_ean_col].values:
-                     product_channel_abc_map[(product_ean, channel_id_from_list)] = 'C'
-                else:
-                     product_channel_abc_map[(product_ean, channel_id_from_list)] = 'NEW'
-            continue
+    # 3. Iterate through all EANs (from product_master_df.index) and all_channel_ids
+    # product_master_df.index should already be string EANs
+    for product_ean_str in product_master_df.index.astype(str):
+        for channel_id_str in map(str, all_channel_ids): # Ensure channel_ids are also strings
+            current_pair = (product_ean_str, channel_id_str)
             
-        channel_sales['cumulative_percent'] = channel_sales['cumulative_sales'] / total_channel_sales
-
-        for _, row in channel_sales.iterrows():
-            # Example of structured logging for a specific event
-            log_detail = {
-                "event": "abc_assignment_iteration",
-                "channel_id": channel_id_from_list,
-                "ean": row[sellout_ean_col],
-                "cumulative_percent": row['cumulative_percent']
-            }
-            # To use JSON formatter, you'd typically set it on the handler.
-            # For this example, I'll just log the JSON string directly if needed,
-            # or rely on a custom formatter if one was fully set up.
-            # logger.info(json.dumps(log_detail)) # If logging JSON strings directly
-
-            logger.debug(f"Assigning ABC for EAN {row[sellout_ean_col]} in channel {channel_id_from_list} with cum_percent {row['cumulative_percent']}", extra=log_detail) # 'extra' can be used by custom formatters
-
-            ean = row[sellout_ean_col]
-            cum_percent = row['cumulative_percent']
-            if cum_percent <= 0.8: 
-                product_channel_abc_map[(ean, channel_id_from_list)] = 'A'
-            elif cum_percent <= 0.95: 
-                product_channel_abc_map[(ean, channel_id_from_list)] = 'B'
-            else: 
-                product_channel_abc_map[(ean, channel_id_from_list)] = 'C'
-
-        sold_eans_in_this_channel = set(channel_sales[sellout_ean_col].astype(str))
-        current_channel_id_str = str(channel_id_from_list)
-
-        for product_ean_from_master in product_master_df.index:
-            product_ean_str = str(product_ean_from_master)
-            # Check if product was sold in this channel
-            if product_ean_str not in sold_eans_in_this_channel:
-                # Product has no sales in this channel. Now check stock.
-                has_stock_in_channel = (product_ean_str, current_channel_id_str) in stocked_product_channel_pairs
+            # Attempt to find ABC class in the lookup map
+            if current_pair in abc_lookup_map:
+                abc_class = abc_lookup_map[current_pair]
+                # Validate if the class is A, B, or C.
+                if abc_class not in ['A', 'B', 'C']:
+                    logger.warning(f"EAN {product_ean_str}, Channel {channel_id_str} has non-standard ABC class '{abc_class}' in ranking file. Defaulting to 'C'.")
+                    abc_class = 'C' # Default to C if file has unrecognized values
+                product_channel_abc_map[current_pair] = abc_class
+                logger.debug(f"EAN {product_ean_str}, Channel {channel_id_str}: classified as '{abc_class}' from ABC_ranking.csv.")
+            else:
+                # Not found in ABC_ranking.csv. Check stock.
+                has_stock_in_channel = current_pair in stocked_product_channel_pairs
                 
-                if not has_stock_in_channel:
-                    # No sales AND no stock in this channel -> NEW
-                    product_channel_abc_map[(product_ean_str, current_channel_id_str)] = 'NEW'
-                    logger.debug(f"EAN {product_ean_str} in channel {current_channel_id_str} classified as NEW (no sales, no stock).")
+                if has_stock_in_channel:
+                    # Not in file, but HAS stock -> 'C'
+                    product_channel_abc_map[current_pair] = 'C'
+                    logger.debug(f"EAN {product_ean_str}, Channel {channel_id_str}: not in ABC_ranking.csv, has stock. Classified as 'C'.")
                 else:
-                    # No sales BUT HAS stock in this channel -> C (or other, 'C' as default)
-                    product_channel_abc_map[(product_ean_str, current_channel_id_str)] = 'C'
-                    logger.debug(f"EAN {product_ean_str} in channel {current_channel_id_str} classified as C (no sales, but has stock).")
-            # If product_ean_str IS in sold_eans_in_this_channel, its ABC class (A, B, or C)
-            # has already been assigned by the logic above. No need for an else here.
-            
+                    # Not in file, AND NO stock -> 'NEW'
+                    product_channel_abc_map[current_pair] = 'NEW'
+                    logger.debug(f"EAN {product_ean_str}, Channel {channel_id_str}: not in ABC_ranking.csv, no stock. Classified as 'NEW'.")
+                    
+    logger.info(f"Finished ABC classification. Total product-channel pairs processed: {len(product_channel_abc_map)}.")
     return product_channel_abc_map
 
 def optimize_allocation(products_df: pd.DataFrame, channels_df: pd.DataFrame, inventory_df: pd.DataFrame,
@@ -473,15 +454,15 @@ if __name__ == '__main__':
         )
         
         logger.info("--- Calculating ABC Classification (in __main__) ---")
-        raw_sellout_df = pd.read_csv(sellout_file)
+        # raw_sellout_df is no longer directly needed for calculate_abc_classification_and_new_skus
+        # but might be loaded for other purposes if any. For now, its direct usage here is removed.
+        # raw_sellout_df = pd.read_csv(sellout_file) 
         
         # Load in-store inventory for ABC classification
         logger.info(f"Loading in-store inventory from: {in_store_inventory_file} for ABC/NEW SKU calculation.")
         try:
-            # Assuming standard column names 'store_code', 'barcode', 'physical_quantity' as per user confirmation
+            # Assuming standard column names 'store_code', 'barcode', 'physical_quantity'
             raw_in_store_inventory_df = pd.read_csv(in_store_inventory_file, dtype={'store_code': str, 'barcode': str})
-            # No specific utility function call here, direct load for __main__ as per plan.
-            # The function calculate_abc_classification_and_new_skus will handle its own processing.
             logger.info(f"Successfully loaded in-store inventory data: {raw_in_store_inventory_df.shape[0]} rows.")
         except FileNotFoundError:
             logger.error(f"In-store inventory file not found: {in_store_inventory_file}. Proceeding without it for NEW SKU, this may affect NEW classification.")
@@ -490,18 +471,16 @@ if __name__ == '__main__':
             logger.error(f"Error loading in-store inventory file {in_store_inventory_file}: {e}. Proceeding with empty df.")
             raw_in_store_inventory_df = pd.DataFrame(columns=['store_code', 'barcode', 'physical_quantity'])
 
-
         all_loaded_channel_ids = channels_df.index.tolist()
+        abc_ranking_file = os.path.join(input_data_path, 'ABC_ranking.csv')
+
         product_channel_abc_map = calculate_abc_classification_and_new_skus(
-            raw_sellout_df,
-            products_df, 
-            all_channel_ids=all_loaded_channel_ids, 
-            sellout_ean_col='barcode', 
-            sellout_channel_col='store_code', 
-            sellout_qty_col='total_items_weekly',
-            in_store_inventory_df=raw_in_store_inventory_df # Pass the new DataFrame
+            product_master_df=products_df, # products_df is the master data in this context
+            all_channel_ids=all_loaded_channel_ids,
+            in_store_inventory_df=raw_in_store_inventory_df,
+            abc_ranking_file_path=abc_ranking_file
         )
-        logger.info(f"Calculated ABC & NEW status for {len(product_channel_abc_map)} product-channel pairs.")
+        logger.info(f"Calculated ABC & NEW status for {len(product_channel_abc_map)} product-channel pairs using ABC_ranking.csv.")
 
         seasonality_coefficient = 1.0
         try:

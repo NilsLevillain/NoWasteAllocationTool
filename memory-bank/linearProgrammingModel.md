@@ -108,13 +108,16 @@ These constraints link the allocation quantity variables with the binary decisio
 
 ## ABC Classification
 
-The model uses an ABC classification system based on product sales:
-- **A**: Top products that contribute to the first 20% of sales
-- **B**: Products that contribute to the next 60% of sales (up to 80% cumulative)
-- **C**: Products that contribute to the remaining 20% of sales (or products with no sales but existing in-store stock)
-- **NEW**: Products with no sales history AND no existing in-store stock in a particular channel.
+The ABC classification is now determined by the `calculate_abc_classification_and_new_skus` function in `backend/solver.py` based on the following logic:
+1.  **Primary Source**: `data/InputData/ABC_ranking.csv`. This file provides pre-calculated ABC classes ('A', 'B', 'C') for EAN-Channel combinations.
+    -   The file is semicolon-delimited. Key columns used are `barcode` (EAN), `store_code` (Channel ID), and `abc_class`.
+2.  **"NEW" SKU Logic**: An EAN-Channel combination is classified as 'NEW' if:
+    *   It is **not** found with an 'A', 'B', or 'C' classification in `ABC_ranking.csv` for that specific EAN and Channel.
+    *   AND, there is no existing in-store stock for that EAN-Channel combination (checked via `data/InputData/in_store_inventory.csv`).
+3.  **Default 'C' Classification**: If an EAN-Channel combination is **not** found in `ABC_ranking.csv` BUT *does* have existing in-store stock (from `data/InputData/in_store_inventory.csv`), it is classified as 'C'.
+4.  **Output**: The function returns a map `product_channel_abc_map[(ean, channel)]` with values 'A', 'B', 'C', or 'NEW'.
 
-This classification influences the coverage days constraints.
+This classification influences the coverage days constraints and new SKU push constraints.
 
 ## Data Inputs
 
