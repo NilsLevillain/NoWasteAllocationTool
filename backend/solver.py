@@ -62,17 +62,21 @@ def calculate_abc_classification_and_new_skus(
     # Ensure correct types for relevant columns from in_store_inventory_df
     # These column names are fixed based on the expected structure of in_store_inventory.csv
     if not in_store_inventory_df.empty:
-        in_store_inventory_df['barcode'] = in_store_inventory_df['barcode'].astype(str)
+        # Normalize EANs (barcode) by stripping leading zeros
+        in_store_inventory_df['barcode'] = in_store_inventory_df['barcode'].astype(str).str.lstrip('0').fillna('')
         in_store_inventory_df['store_code'] = in_store_inventory_df['store_code'].astype(str)
         in_store_inventory_df['physical_quantity'] = pd.to_numeric(in_store_inventory_df['physical_quantity'], errors='coerce').fillna(0)
         
-        stocked_df = in_store_inventory_df[in_store_inventory_df['physical_quantity'] > 0]
+        # Filter out rows where barcode might have become empty after stripping (e.g., if it was "0")
+        valid_inventory_df = in_store_inventory_df[in_store_inventory_df['barcode'] != '']
+        
+        stocked_df = valid_inventory_df[valid_inventory_df['physical_quantity'] > 0]
         stocked_product_channel_pairs = set()
         if not stocked_df.empty:
-            stocked_product_channel_pairs = set(zip(stocked_df['barcode'], stocked_df['store_code']))
+            stocked_product_channel_pairs = set(zip(stocked_df['barcode'], stocked_df['store_code'])) # Uses normalized barcodes
             logger.debug(f"Found {len(stocked_product_channel_pairs)} product-channel pairs with existing stock from in_store_inventory_df.")
         else:
-            logger.debug("No product-channel pairs with existing stock found in in_store_inventory_df (after filtering for positive quantity).")
+            logger.debug("No product-channel pairs with existing stock found in in_store_inventory_df (after filtering for positive quantity or invalid EANs).")
     else:
         logger.debug("In-store inventory data is empty. No stocked product-channel pairs to identify.")
         stocked_product_channel_pairs = set()
@@ -88,18 +92,19 @@ def calculate_abc_classification_and_new_skus(
             sep=';', 
             dtype={'barcode': str, 'store_code': str, 'abc_class': str}
         )
-        # Ensure 'barcode' (EAN) and 'store_code' (channel) are strings and not NaN
-        abc_ranking_df['barcode'] = abc_ranking_df['barcode'].astype(str).fillna('')
+        # Normalize EANs (barcode) by stripping leading zeros and ensure other key columns are strings
+        abc_ranking_df['barcode'] = abc_ranking_df['barcode'].astype(str).str.lstrip('0').fillna('')
         abc_ranking_df['store_code'] = abc_ranking_df['store_code'].astype(str).fillna('')
-        abc_ranking_df['abc_class'] = abc_ranking_df['abc_class'].astype(str).fillna('')
+        abc_ranking_df['abc_class'] = abc_ranking_df['abc_class'].astype(str).fillna('').str.upper() # Standardize to uppercase
 
-        # Filter out rows where essential data might be missing after conversion (e.g. if original was NaN)
+        # Filter out rows where essential data might be missing or EAN became empty
         abc_ranking_df = abc_ranking_df[
             (abc_ranking_df['barcode'] != '') & 
             (abc_ranking_df['store_code'] != '') & 
-            (abc_ranking_df['abc_class'] != '')
+            (abc_ranking_df['abc_class'] != '') &
+            (abc_ranking_df['abc_class'].isin(['A', 'B', 'C'])) # Only consider valid ABC classes from file
         ]
-        logger.info(f"Successfully loaded {len(abc_ranking_df)} valid rows from {abc_ranking_file_path}.")
+        logger.info(f"Successfully loaded and processed {len(abc_ranking_df)} valid rows from {abc_ranking_file_path}.")
     except FileNotFoundError:
         logger.error(f"ABC ranking file not found: {abc_ranking_file_path}. All products will be classified based on stock (C or NEW).")
         abc_ranking_df = pd.DataFrame(columns=['barcode', 'store_code', 'abc_class']) # Empty DataFrame
@@ -110,26 +115,21 @@ def calculate_abc_classification_and_new_skus(
     # Create a lookup map from ABC_ranking.csv: {(ean, channel): abc_class}
     abc_lookup_map = {}
     if not abc_ranking_df.empty:
+        # Use normalized 'barcode' for the lookup map keys
         for _, row in abc_ranking_df.iterrows():
-            # Ensure EAN (barcode) and channel (store_code) are treated as strings for keys
-            ean_key = str(row['barcode'])
-            channel_key = str(row['store_code'])
-            abc_lookup_map[(ean_key, channel_key)] = str(row['abc_class']).upper() # Standardize to uppercase
+            ean_key = row['barcode'] # Already normalized and string
+            channel_key = row['store_code'] # Already string
+            abc_lookup_map[(ean_key, channel_key)] = row['abc_class'] # Already uppercase and validated A, B, C
         logger.debug(f"Created ABC lookup map with {len(abc_lookup_map)} entries from ABC_ranking.csv.")
 
-    # 3. Iterate through all EANs (from product_master_df.index) and all_channel_ids
-    # product_master_df.index should already be string EANs
-    for product_ean_str in product_master_df.index.astype(str):
+    # 3. Iterate through all EANs (from product_master_df.index, which are already normalized by load_products_df) and all_channel_ids
+    for product_ean_str in product_master_df.index: # Already normalized strings
         for channel_id_str in map(str, all_channel_ids): # Ensure channel_ids are also strings
             current_pair = (product_ean_str, channel_id_str)
             
             # Attempt to find ABC class in the lookup map
             if current_pair in abc_lookup_map:
-                abc_class = abc_lookup_map[current_pair]
-                # Validate if the class is A, B, or C.
-                if abc_class not in ['A', 'B', 'C']:
-                    logger.warning(f"EAN {product_ean_str}, Channel {channel_id_str} has non-standard ABC class '{abc_class}' in ranking file. Defaulting to 'C'.")
-                    abc_class = 'C' # Default to C if file has unrecognized values
+                abc_class = abc_lookup_map[current_pair] # Class is already validated A, B, or C
                 product_channel_abc_map[current_pair] = abc_class
                 logger.debug(f"EAN {product_ean_str}, Channel {channel_id_str}: classified as '{abc_class}' from ABC_ranking.csv.")
             else:

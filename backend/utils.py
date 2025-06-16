@@ -90,8 +90,11 @@ def load_products_df(file_path: str, ean_col: str = 'product_gtin',
         logger.error(f"EAN column '{ean_col}' (expected 'ean') not found after renaming in {file_path}.")
         raise ValueError(f"EAN column '{ean_col}' (expected 'ean') not found after renaming in {file_path}.")
     
+    pdf['ean'] = pdf['ean'].astype(str).str.lstrip('0').fillna('') # Normalize EANs by stripping leading zeros
+    pdf = pdf[pdf['ean'] != ''] # Remove rows where EAN became empty after stripping (e.g. if it was just "0" or "00")
+
     if pdf['ean'].duplicated().any():
-        logger.warning(f"Duplicate EANs found in {file_path}. Keeping first occurrence.")
+        logger.warning(f"Duplicate EANs found in {file_path} after normalization. Keeping first occurrence.")
         pdf.drop_duplicates(subset=['ean'], keep='first', inplace=True)
         
     products_df_indexed = pdf.set_index('ean')
