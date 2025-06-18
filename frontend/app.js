@@ -230,7 +230,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await response.json();
 
             // Update state with fetched data
-            allocationData = data.allocationData || [];
+            let rawAllocationData = data.allocationData || [];
+
+            // Filter out items where StockToAllocate (units) is 0 OR AvailableStock is 0
+            allocationData = rawAllocationData.filter(item => {
+                const stockToAllocate = item.units || 0;
+                const availableStock = item.available_stock || 0; // Key added in main.py
+                return stockToAllocate > 0 && availableStock > 0;
+            });
+
             channelColumns = data.channelColumns || [];
             const apiStatus = data.allocationStatus || 'UNKNOWN'; // Get status from API
 
@@ -439,12 +447,14 @@ document.addEventListener('DOMContentLoaded', () => {
             { headerText: 'SubAxe', key: 'subAxe' },
             { headerText: 'Metier', key: 'metier' },
             { headerText: 'EAN', key: 'ean' },
+            { headerText: 'Details', key: 'details', sortable: false }, // New Details column
             { headerText: 'SKU', key: 'sku' },
             { headerText: 'Description', key: 'description' },
+            { headerText: 'Bad Stock Type', key: 'bad_stock_type' }, // New column
             { headerText: 'Units', key: 'units' },
             { headerText: 'Plant', key: 'plant' }, // Changed from 'Stock origin', data key is 'plant' (which holds description)
-            { headerText: 'FlagExcess6months', key: 'flagExcess6months' },
-            { headerText: 'FlagExcess12months', key: 'flagExcess12months' },
+            // { headerText: 'FlagExcess6months', key: 'flagExcess6months' }, // Removed
+            // { headerText: 'FlagExcess12months', key: 'flagExcess12months' }, // Removed
             { headerText: 'Allocation %', key: 'allocAccu' },
             { headerText: 'Remaining Qty', key: 'remainingQty' }
         ];
@@ -513,13 +523,26 @@ document.addEventListener('DOMContentLoaded', () => {
             row.insertCell().textContent = item.axe || '';
             row.insertCell().textContent = item.subAxe || '';
             row.insertCell().textContent = item.metier || '';
-            row.insertCell().textContent = item.ean || '';
+            
+            // EAN cell
+            const eanCell = row.insertCell();
+            eanCell.textContent = item.ean || '';
+
+            // Details link cell
+            const detailsCell = row.insertCell();
+            const detailsLink = document.createElement('a');
+            detailsLink.href = `ean_deep_dive.html?ean=${item.ean}`; // Assuming item.ean is populated
+            detailsLink.innerHTML = '<i class="fas fa-search"></i> Details'; // Using Font Awesome icon
+            detailsLink.target = '_blank'; // Open in new tab
+            detailsCell.appendChild(detailsLink);
+            
             row.insertCell().textContent = item.sku || '';
             row.insertCell().textContent = item.description || '';
+            row.insertCell().textContent = item.bad_stock_type || ''; // Add new cell for bad_stock_type
             row.insertCell().textContent = (item.units || 0).toLocaleString();
             row.insertCell().textContent = item.plant || ''; // Was item.stockOrigin, now item.plant (which holds description)
-            row.insertCell().textContent = item.flagExcess6months || '';
-            row.insertCell().textContent = item.flagExcess12months || '';
+            // row.insertCell().textContent = item.flagExcess6months || ''; // Removed
+            // row.insertCell().textContent = item.flagExcess12months || ''; // Removed
             const allocAccuCell = row.insertCell();
             // Calculate total allocated for the item initially
             const totalAllocatedInitial = Object.values(item.channels || {}).reduce((sum, val) => sum + (val || 0), 0);
@@ -585,8 +608,11 @@ document.addEventListener('DOMContentLoaded', () => {
             // Update the specific cells in the DOM for THIS ROW
             const row = input.closest('tr');
             if (row) {
-                const accuracyCell = row.cells[12]; // Alloc % cell index
-                const remainingQtyCell = row.cells[13]; // Remaining Qty cell index
+                // Adjust cell indices based on new column structure
+                // Div, Sig, Axe, SubAxe, Metier, EAN, Details, SKU, Desc, BadStockType, Units, Plant, Alloc%, RemQty
+                // 0,   1,   2,   3,      4,      5,   6,       7,   8,    9,            10,    11,    12,     13
+                const accuracyCell = row.cells[12]; // Alloc % cell index is now 12
+                const remainingQtyCell = row.cells[13]; // Remaining Qty cell index is now 13
 
                 if (accuracyCell) {
                     updateAllocAccuCell(accuracyCell, item.units || 0, currentTotalAllocatedInRow);
@@ -936,12 +962,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Prepare data to send to the backend
+        // Backend expects a list of {'id': 'ean_plantcode', 'channels': {'channel_id': qty, ...}}
         const changesToSave = allocationData.map(item => ({
-            ean: item.ean,
-            channels: item.channels || {} // Send the updated channel allocations, ensure it's an object
+            id: item.id, // This is 'ean_plantcode'
+            channels: item.channels || {} // Send the updated channel allocations for this specific ean_plantcode
         }));
 
-        console.log("Data to save:", changesToSave);
+        console.log("Data to save (EAN-Plant specific):", changesToSave);
 
         const saveBtn = document.getElementById('save-allocation');
         const originalText = saveBtn.innerHTML;
@@ -1143,7 +1170,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const wsData = [];
         // Header row
-        const headerRow = ['Div', 'Signature', 'Axe', 'SubAxe', 'Metier', 'EAN', 'SKU', 'Description', 'Units', 'Plant', 'FlagExcess6months', 'FlagExcess12months', 'Allocation %', 'Remaining Qty']; // Changed 'Stock origin' to 'Plant'
+        const headerRow = ['Div', 'Signature', 'Axe', 'SubAxe', 'Metier', 'EAN', 'SKU', 'Description', 'Bad Stock Type', 'Units', 'Plant', 'Allocation %', 'Remaining Qty']; // Updated header
         channelColumns.forEach(channel => headerRow.push(channel)); // Use dynamic channel columns
         wsData.push(headerRow);
 
@@ -1162,10 +1189,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 item.ean || '',
                 item.sku || '',
                 item.description || '',
+                item.bad_stock_type || '', // Add bad_stock_type
                 item.units || 0,
                 item.plant || '', // Was item.stockOrigin, now item.plant (which holds description)
-                item.flagExcess6months || '',
-                item.flagExcess12months || '',
+                // item.flagExcess6months || '', // Removed
+                // item.flagExcess12months || '', // Removed
                 allocPerc, // Use calculated percentage string
                 remainingQty // Add remaining quantity
             ];

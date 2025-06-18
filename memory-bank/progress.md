@@ -25,8 +25,37 @@
     - Implemented live updates for the "Remaining Qty" column in `frontend/app.js` based on user input in allocation channel fields.
 - **Chart Color Palette Customization (June 2025)**:
     - Implemented a `generateColorShades` helper in `frontend/app.js`.
-    - Applied a yellow-to-green gradient for the "Stock at Risk by Division" and "Stock at Risk by Brand" pie charts.
-    - Applied a distinct professional color palette for the "Stock of EANs Allocated to Channels (by Plant)" bar chart.
+            - Applied a yellow-to-green gradient for the "Stock at Risk by Division" and "Stock at Risk by Brand" pie charts.
+            - Applied a distinct professional color palette for the "Stock of EANs Allocated to Channels (by Plant)" bar chart.
+- **Refined "NEW SKU" Definition (June 2025)**:
+    - Updated `backend/solver.py` (`calculate_abc_classification_and_new_skus`) to define "NEW" SKUs based on no sales AND no in-store stock. Products with no sales but with stock are now 'C'.
+    - Updated the call to this function in `backend/solver.py`'s `__main__` block and in `main.py`'s `/api/auto_allocate` endpoint to pass necessary in-store inventory data.
+- **EAN Allocation Deep Dive Feature (Initial Implementation - June 2025)**:
+    - **Backend**: Created `/api/ean_deep_dive_data` in `main.py` to serve detailed EAN data (product info, stock, channel performance, ABC, rules, final allocations). Ensured correct route registration.
+    - **Frontend**: Developed `frontend/ean_deep_dive.html` and `frontend/ean_deep_dive.js` for displaying this data. Corrected JavaScript error handling for missing data properties and updated API fetch call to use an absolute URL.
+    - **Integration**: Added "Details" link in the main allocation table (`frontend/app.js`, `frontend/index.html`) to navigate to the deep dive page.
+    - **Testing**: Initiated `tests/test_main_api_deep_dive.py` for the new endpoint.
+    - *Status*: The 404 error for `/api/ean_deep_dive_data` has been resolved. The endpoint is now functional with its full data-gathering logic. The "out of application context" error in its unit tests still needs investigation.
+- **Restored `/api/allocation_data` Endpoint Functionality (June 2025)**:
+    - Corrected `main.py` to ensure the `/api/allocation_data` route definition was present and correctly placed, resolving a 404 error that had appeared for this endpoint.
+- **Frontend UI Filtering for Non-Allocatable Stock (June 2025)**:
+    - Modified `main.py` (`/api/allocation_data` endpoint) to include `available_stock` in the JSON response.
+    - Updated `frontend/app.js` (`fetchAllocationData` function) to filter displayed inventory, showing only items with `StockToAllocate > 0` AND `AvailableStock > 0`.
+    - Added test data to `data/InputData/bad_stock_inventory.csv` for comprehensive testing of the filtering logic.
+- **Implemented Plant-Level Stock Allocation Constraints (June 2025)**:
+    - **Solver (`backend/solver.py`):** Modified to use EAN-Plant-Channel decision variables (`x[ean, plant, channel]`) and EAN-Plant specific supply constraints. Other constraints (coverage, new SKU, outlet capacity, assortment, restricted brands) were adapted to correctly sum or use EAN-level decisions derived from plant-level allocations. Solver results now include `plant_code`.
+    - **Database Model (`backend/models.py`):** Added `plant_code` field to the `Allocation` table.
+    - **API Logic (`main.py`):**
+        - `/api/auto_allocate`: Updated to save EAN-Plant-Channel allocations (including `plant_code`) to the database.
+        - `/api/allocation_data`: Modified to correctly fetch and structure EAN-Plant-Channel allocations for the frontend.
+        - `/api/save_allocations`: Updated to correctly process manual allocations submitted at the EAN-Plant level.
+    - **Frontend Logic (`frontend/app.js`):**
+        - `saveAllocation` function updated to send EAN-Plant specific data to the backend.
+        - Other frontend components (`handleAllocationChange`, table rendering) were already largely compatible with EAN-Plant granularity due to the existing `item.id` structure (`ean_plantcode`).
+- **Refactored ABC Classification to Use `ABC_ranking.csv` (June 2025)**:
+    - **Solver (`backend/solver.py`):** The `calculate_abc_classification_and_new_skus` function was successfully refactored to derive ABC classes from `data/InputData/ABC_ranking.csv`. The logic for "NEW" SKUs (not in file and no stock) and default 'C' classification (not in file but has stock) was implemented. The function signature was updated, and logging was adapted.
+    - **API Logic (`main.py`):** Calls to `calculate_abc_classification_and_new_skus` in the `/api/auto_allocate` and `/api/ean_deep_dive_data` endpoints were updated to use the new function signature, including passing the path to `ABC_ranking.csv`.
+    - **Unit Tests (`tests/test_solver.py`):** Comprehensive unit tests were added for the refactored `calculate_abc_classification_and_new_skus` function, covering various scenarios including file-based lookup, NEW SKU logic, default 'C' logic, empty/missing ranking file, and handling of non-standard ABC classes. Mocking is used for CSV file reading. Old sellout-based ABC tests were removed.
 
 ## Remaining Work
 - Continue refinement of the optimization engine constraints and objective function as outlined in `activeContext.md`.
@@ -39,7 +68,14 @@
 ## Current Status
 - Data ingestion and preprocessing layer is now stable and well-tested.
 - Core optimization logic is integrated with the new data loading utilities.
-- `/api/auto_allocate` endpoint correctly saves allocations to the database, and the frontend now accurately reflects these changes.
-- The `/api/allocation_data` endpoint now serves allocation data sourced from the database, providing a consistent view for the frontend.
+- `/api/auto_allocate` endpoint correctly saves allocations to the database. The ABC classification logic used by this endpoint and `/api/ean_deep_dive_data` now sources from `ABC_ranking.csv`, and the "NEW SKU" definition is updated accordingly.
+- The `/api/allocation_data` endpoint is now functional again, serving allocation data sourced from the database.
 - Client-side handling of the auto-allocation process in `frontend/app.js` is more robust.
+- The "EAN Allocation Deep Dive" feature is now functional, providing detailed EAN-specific data.
+- Frontend UI now correctly filters out non-allocatable stock, improving data presentation clarity.
+- Core allocation logic now respects plant-level stock constraints, providing more accurate optimization.
+- Database and APIs updated to handle EAN-Plant-Channel granularity for allocations.
+- Frontend correctly displays and allows manual editing of EAN-Plant specific allocations.
+- Unit tests for the new ABC classification logic have been implemented in `tests/test_solver.py`.
 - Ready to proceed with further development on optimization logic and UI, with a solid foundation for data handling and display.
+- *Ongoing*: Addressing the "out of application context" error in the unit tests for the `/api/ean_deep_dive_data` endpoint.
