@@ -81,7 +81,7 @@ if not logger.handlers: # Avoid adding multiple handlers if script is re-run in 
 if __name__ != "__main__":
     from backend.utils import (
         load_products_df, load_channels_df, load_inventory_df, load_demand_dict,
-        load_existing_stock_dict, load_optimization_rules
+        load_existing_stock_dict, load_optimization_rules, load_sellin_ranking_dict
     )
 
 # --- ABC Classification Function ---
@@ -168,7 +168,7 @@ def calculate_abc_classification_and_new_skus(
             if current_pair in abc_lookup_map:
                 abc_class = abc_lookup_map[current_pair] # Class is already validated A, B, or C
                 product_channel_abc_map[current_pair] = abc_class
-                logger.debug(f"EAN {product_ean_str}, Channel {channel_id_str}: classified as '{abc_class}' from ABC_ranking.csv.")
+                #logger.debug(f"EAN {product_ean_str}, Channel {channel_id_str}: classified as '{abc_class}' from ABC_ranking.csv.")
             else:
                 # Not found in ABC_ranking.csv. Check stock.
                 has_stock_in_channel = current_pair in stocked_product_channel_pairs
@@ -187,7 +187,7 @@ def calculate_abc_classification_and_new_skus(
 
 def optimize_allocation(products_df: pd.DataFrame, channels_df: pd.DataFrame, inventory_df: pd.DataFrame,
                         demand_dict: dict, parameters: OptimizationParameters, existing_stock_dict: dict,
-                        product_channel_abc_map: dict):
+                        product_channel_abc_map: dict, sellin_ranking_dict: dict):
     logger.info("Starting inventory allocation optimization.")
     logger.debug(f"Number of products: {len(products_df)}, Number of channels: {len(channels_df)}")
     logger.debug(f"Optimization Parameters: {parameters}")
@@ -228,6 +228,40 @@ def optimize_allocation(products_df: pd.DataFrame, channels_df: pd.DataFrame, in
     logger.debug(f"Products grouped by outlet capacity: {len(products_by_outlet_capacity_group)} groups.")
     logger.debug(f"Products grouped by outlet assortment: {len(products_by_outlet_assortment_group)} groups.")
 
+    logger.info("Calculating allocation scores for objective function.")
+    # Scoring Constants (can be moved to OptimizationParameters schema for user configurability if needed)
+    A_B_CLASS_SCORE = 2.0 # Higher score for A/B to maintain prioritization
+    DEFAULT_ALLOCATION_SCORE = 1.0 # Base score for C class and fallback
+    SELLIN_RANKING_MAX_VALUE = 100 # Max possible sellin ranking for normalization
+    C_CLASS_DEMAND_SCALING_FACTOR = 0.001 # Scales demand into a score contribution (tune this)
+    NEW_SKU_RANKING_WEIGHT = 1.0 # Weight for sellin ranking contribution for NEW SKUs
+    C_CLASS_DEMAND_WEIGHT = 0.5 # Weight for demand contribution for C SKUs
+
+    score_per_ean_channel = {}
+    for p_ean in products:
+        for c_channel in channels:
+            abc_class = product_channel_abc_map.get((p_ean, c_channel), 'C') # Default to 'C' if not found
+            score = DEFAULT_ALLOCATION_SCORE
+
+            if abc_class == 'NEW':
+                sellin_rank = sellin_ranking_dict.get(p_ean, 0)
+                # Score for NEW SKUs: Base score + (normalized sellin rank * weight)
+                score = NEW_SKU_RANKING_WEIGHT * (DEFAULT_ALLOCATION_SCORE + (sellin_rank / SELLIN_RANKING_MAX_VALUE))
+                logger.debug(f"Score for NEW SKU EAN:{p_ean} C:{c_channel}: Sellin Rank={sellin_rank}, Score={score:.2f}")
+            elif abc_class == 'C':
+                demand = demand_dict.get((p_ean, c_channel), 0)
+                # Score for C Class SKUs: Base score + (scaled demand * weight)
+                score = C_CLASS_DEMAND_WEIGHT * (DEFAULT_ALLOCATION_SCORE + (demand * C_CLASS_DEMAND_SCALING_FACTOR))
+                logger.debug(f"Score for C Class EAN:{p_ean} C:{c_channel}: Demand={demand}, Score={score:.2f}")
+            elif abc_class in ['A', 'B']:
+                score = A_B_CLASS_SCORE
+                logger.debug(f"Score for {abc_class} Class EAN:{p_ean} C:{c_channel}: Score={score:.2f} (Prioritized)")
+            else:
+                logger.warning(f"Unknown ABC class '{abc_class}' for EAN:{p_ean} C:{c_channel}. Using default score {DEFAULT_ALLOCATION_SCORE}.")
+                score = DEFAULT_ALLOCATION_SCORE
+            
+            score_per_ean_channel[(p_ean, c_channel)] = score
+
     logger.info("Defining PuLP model and variables.")
     model = pulp.LpProblem("InventoryAllocation", pulp.LpMaximize)
     
@@ -246,8 +280,10 @@ def optimize_allocation(products_df: pd.DataFrame, channels_df: pd.DataFrame, in
                                           ((p, c) for p in products for c in channels), 
                                           cat='Binary')
 
-    model += (pulp.lpSum(x[p, plant, c] for p, plant in ean_plant_pairs for c in channels), "Maximize_Total_Allocation")
-    logger.debug("Objective function added: Maximize_Total_Allocation.")
+    # Objective function: Maximize total allocation weighted by calculated scores
+    model += (pulp.lpSum(x[p, plant, c] * score_per_ean_channel.get((p, c), DEFAULT_ALLOCATION_SCORE) 
+                         for p, plant in ean_plant_pairs for c in channels), "Maximize_Weighted_Allocation")
+    logger.debug("Objective function added: Maximize_Weighted_Allocation.")
 
     logger.info("Adding supply constraints (per EAN-Plant).")
     for p, plant_code in ean_plant_pairs:
@@ -256,7 +292,7 @@ def optimize_allocation(products_df: pd.DataFrame, channels_df: pd.DataFrame, in
         max_allocatable_at_plant = min(s_to_allocate, a_stock)
         
         model += pulp.lpSum(x[p, plant_code, c] for c in channels) <= max_allocatable_at_plant, f"Supply_Product_{p}_Plant_{plant_code}"
-        logger.debug(f"Supply constraint for P:{p} Plant:{plant_code}: sum(alloc) <= {max_allocatable_at_plant} (StockToAllocate: {s_to_allocate}, AvailableStock: {a_stock})")
+        #logger.debug(f"Supply constraint for P:{p} Plant:{plant_code}: sum(alloc) <= {max_allocatable_at_plant} (StockToAllocate: {s_to_allocate}, AvailableStock: {a_stock})")
 
     logger.info("Linking allocation quantity (x) with plant-level decision (y_ean_plant_channel) and EAN-level decision (y_ean_channel).")
     for p_ean, plant_code_specific in ean_plant_pairs:
@@ -293,7 +329,7 @@ def optimize_allocation(products_df: pd.DataFrame, channels_df: pd.DataFrame, in
                 if max_skus is not None and max_skus >= 0:
                     # Sum over y_ean_channel for EANs in this group
                     model += pulp.lpSum(y_ean_channel[pg_ean, c] for pg_ean in group_products_eans if pg_ean in products) <= max_skus, f"Outlet_Capacity_SKU_{c}_{division}_{axe}"
-                    logger.debug(f"Added SKU capacity constraint for channel {c}, div {division}, axe {axe}: max {max_skus} SKUs (EAN level).")
+                    #logger.debug(f"Added SKU capacity constraint for channel {c}, div {division}, axe {axe}: max {max_skus} SKUs (EAN level).")
 
     logger.info("Adding coverage days and new SKU push constraints (sum of x over plants for an EAN-Channel).")
     for c in channels: 
@@ -304,7 +340,7 @@ def optimize_allocation(products_df: pd.DataFrame, channels_df: pd.DataFrame, in
                 continue
 
             abc_class = product_channel_abc_map.get((p_ean, c), 'C') 
-            logger.debug(f"Coverage/Push: EAN {p_ean}, Channel {c}, ABC Class: {abc_class}")
+            #logger.debug(f"Coverage/Push: EAN {p_ean}, Channel {c}, ABC Class: {abc_class}")
             current_stock_for_pc = existing_stock_dict.get((p_ean, c), 0) # This is EAN-Channel level existing stock
 
             if abc_class == 'NEW':
@@ -317,21 +353,21 @@ def optimize_allocation(products_df: pd.DataFrame, channels_df: pd.DataFrame, in
                 # Get channel type for the current channel ID c
                 channel_type_for_c = channels_df.loc[c, 'channel_type']
                 lookup_key = (channel_type_for_c, abc_class)
-                logger.debug(f"Coverage lookup: EAN {p_ean}, C_ID {c}, C_Type {channel_type_for_c}, ABC {abc_class}. Using key: {lookup_key}")
+                #logger.debug(f"Coverage lookup: EAN {p_ean}, C_ID {c}, C_Type {channel_type_for_c}, ABC {abc_class}. Using key: {lookup_key}")
                 cov_days = coverage_rules_dict.get(lookup_key) 
-                logger.debug(f"Coverage lookup result for EAN {p_ean}, C_ID {c} (Type {channel_type_for_c}), ABC {abc_class} (key {lookup_key}): cov_days = {cov_days} (Type: {type(cov_days)})")
+                #logger.debug(f"Coverage lookup result for EAN {p_ean}, C_ID {c} (Type {channel_type_for_c}), ABC {abc_class} (key {lookup_key}): cov_days = {cov_days} (Type: {type(cov_days)})")
                 
                 if cov_days is not None and cov_days >= 0:
                     adj_demand = demand_dict.get((p_ean, c), 0) * parameters.seasonality_coefficient # EAN-Channel demand
-                    logger.debug(f"Coverage calc: EAN {p_ean}, C_ID {c}. Adjusted demand: {adj_demand}, Current stock: {current_stock_for_pc}, Cov_days: {cov_days}")
+                    #logger.debug(f"Coverage calc: EAN {p_ean}, C_ID {c}. Adjusted demand: {adj_demand}, Current stock: {current_stock_for_pc}, Cov_days: {cov_days}")
                     if adj_demand > 0:
                         allow_alloc = max(0, (adj_demand / 14.0) * cov_days - current_stock_for_pc)
                         # Sum of allocations for this EAN to this Channel, across all plants
                         model += pulp.lpSum(x[p_ean, pl_specific, c] for pl_specific in plants_for_this_ean) <= allow_alloc, f"Max_Coverage_Days_{p_ean}_{c}"
-                        logger.debug(f"Coverage constraint for EAN:{p_ean} C_ID:{c} (ABC:{abc_class}): sum_plants(qty) <= {allow_alloc}. Applied.")
+                        #logger.debug(f"Coverage constraint for EAN:{p_ean} C_ID:{c} (ABC:{abc_class}): sum_plants(qty) <= {allow_alloc}. Applied.")
                     else: 
                         model += pulp.lpSum(x[p_ean, pl_specific, c] for pl_specific in plants_for_this_ean) <= 0, f"Max_Coverage_Days_Zero_Demand_{p_ean}_{c}"
-                        logger.debug(f"Coverage constraint for EAN:{p_ean} C_ID:{c} (ABC:{abc_class}): Zero demand, sum_plants(qty) <= 0. Applied.")
+                        #logger.debug(f"Coverage constraint for EAN:{p_ean} C_ID:{c} (ABC:{abc_class}): Zero demand, sum_plants(qty) <= 0. Applied.")
                 else:
                     logger.debug(f"Coverage constraint for EAN:{p_ean} C_ID:{c} (ABC:{abc_class}): Skipped (cov_days is None or negative: {cov_days}).")
     
@@ -398,7 +434,7 @@ if __name__ == '__main__':
     # would not have run. Schemas are already imported globally thanks to sys.path modification.
     from backend.utils import (
         load_products_df, load_channels_df, load_inventory_df, load_demand_dict,
-        load_existing_stock_dict, load_optimization_rules
+        load_existing_stock_dict, load_optimization_rules, load_sellin_ranking_dict
     )
     # Schemas (OptimizationParameters, etc.) are already available from top-level import.
     
@@ -415,6 +451,7 @@ if __name__ == '__main__':
     in_store_inventory_file = os.path.join(input_data_path, 'in_store_inventory.csv')
     stock_in_transit_file = os.path.join(input_data_path, 'stock_in_transit.csv')
     sellout_file = os.path.join(input_data_path, 'sellout.csv')
+    sellin_file = os.path.join(input_data_path, 'sellin.csv') # New sellin file path
     
     channel_list_file = os.path.join(excel_params_path, 'ChannelList.xlsx')
     capacity_channel_file = os.path.join(excel_params_path, 'CapacityPerChannel.xlsx')
@@ -534,6 +571,9 @@ if __name__ == '__main__':
         )
         logger.info(f"Calculated ABC & NEW status for {len(product_channel_abc_map)} product-channel pairs using ABC_ranking.csv.")
 
+        sellin_ranking_dict = load_sellin_ranking_dict(sellin_file) # Load sellin ranking data
+        logger.info(f"Loaded sellin rankings for {len(sellin_ranking_dict)} EANs.")
+
         seasonality_coefficient = 1.0
         try:
             s_input = input("Enter seasonality coefficient (e.g., 1.0): ")
@@ -553,7 +593,10 @@ if __name__ == '__main__':
         logger.info("OptimizationParameters object created.")
 
         logger.info("\n--- Running Optimization (in __main__) ---")
-        model, status, results = optimize_allocation(products_df, channels_df, inventory_df, demand_dict, params, existing_stock_dict, product_channel_abc_map)
+        model, status, results = optimize_allocation(
+            products_df, channels_df, inventory_df, demand_dict, params, 
+            existing_stock_dict, product_channel_abc_map, sellin_ranking_dict # Pass sellin_ranking_dict
+        )
         
         logger.info(f"\nSolver Status: {status}")
         if status == 'Optimal':

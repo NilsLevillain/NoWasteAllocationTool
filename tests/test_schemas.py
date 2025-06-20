@@ -1,213 +1,255 @@
 import pytest
 from pydantic import ValidationError
 import json
+from datetime import datetime
 
-# Assuming schemas.py is in the parent directory or PYTHONPATH is set correctly
-# If running pytest from the root directory, this import should work.
-from schemas import (
+# Corrected import path
+from backend.schemas import (
     AllocationRequest,
     ProductInput,
     ChannelInput,
     InventoryInput,
     DemandInput,
-    RevenueInput,
-    OptimizationParameters # Import the new model
+    OptimizationParameters,
+    CoverageDaysRule,
+    OutletSKUCapacityRule,
+    OutletAssortmentRule,
+    PushNewSKURule
 )
 
-# --- Sample Valid Data ---
+# --- Sample Valid Data for New Schemas ---
 
-# Base data without parameters (for older tests)
-BASE_VALID_PAYLOAD = {
-    "products": [
-        {"sku": "SKU001", "donation_eligible": True, "name": "Product A", "brand": "BrandX"},
-        {"sku": "SKU002", "donation_eligible": False, "name": "Product B", "brand": "BrandY"}
-    ],
-    "channels": [
-        {"id": "STORE1", "capacity": 100, "min_coverage": 0.8, "channel_type": "store"},
-        {"id": "DONATE1", "capacity": 50, "min_coverage": 0.9, "channel_type": "donation"}
-    ],
-    "inventory": [
-        {"product_sku": "SKU001", "quantity": 50},
-        {"product_sku": "SKU002", "quantity": 30}
-    ],
-    "demand": [
-        {"product_sku": "SKU001", "channel_id": "STORE1", "demand_quantity": 20},
-        {"product_sku": "SKU002", "channel_id": "STORE1", "demand_quantity": 15}
-    ],
-    "revenue": [
-        {"product_sku": "SKU001", "channel_id": "STORE1", "revenue_per_unit": 10.5},
-        {"product_sku": "SKU002", "channel_id": "STORE1", "revenue_per_unit": 8.0},
-    ]
+VALID_PRODUCT_INPUT = {
+    "sku": "SKU001",
+    "donation_eligible": True,
+    "name": "Product A",
+    "brand": "BrandX",
+    "division": "DivA",
+    "axe": "Axe1",
+    "subaxis": "Sub1",
+    "metier": "MetA",
+    "abc_class": "A",
+    "cogs": 10.5
 }
 
-# Payload including valid parameters
-VALID_PAYLOAD_WITH_PARAMS = {
-    "parameters": {
-        "default_min_coverage": 0.75,
-        "min_skus_per_store": 2,
-        "restricted_brands_for_donation": ["BrandY"]
-    },
-    **BASE_VALID_PAYLOAD # Merge base data
+VALID_CHANNEL_INPUT = {
+    "id": "STORE1",
+    "capacity": 100,
+    "channel_type": "store"
 }
 
-# Payload with empty but valid parameters
-VALID_PAYLOAD_EMPTY_PARAMS = {
-    "parameters": {}, # Empty parameters object is valid
-    **BASE_VALID_PAYLOAD
+VALID_INVENTORY_INPUT = {
+    "product_sku": "SKU001",
+    "quantity": 50
 }
 
+VALID_DEMAND_INPUT = {
+    "product_sku": "SKU001",
+    "channel_id": "STORE1",
+    "demand_quantity": 20
+}
 
-# --- Test Cases ---
+VALID_COVERAGE_RULE = {
+    "channel_id": "STORE1",
+    "abc_class": "A",
+    "coverage_days": 7
+}
 
-def test_valid_payload_parsing_with_params():
-    """Tests if a valid payload with parameters is parsed correctly."""
-    try:
-        request_data = AllocationRequest(**VALID_PAYLOAD_WITH_PARAMS)
-        assert request_data.parameters.default_min_coverage == 0.75
-        assert request_data.parameters.min_skus_per_store == 2
-        assert request_data.parameters.restricted_brands_for_donation == ["BrandY"]
-        # Check base data parsing too
-        assert len(request_data.products) == 2
-        assert request_data.channels[0].id == "STORE1"
-    except ValidationError as e:
-        pytest.fail(f"Valid payload with parameters failed validation: {e}")
+VALID_OUTLET_CAPACITY_RULE = {
+    "channel_id": "OUTLET1",
+    "division": "DivA",
+    "axe": "Axe1",
+    "max_skus": 50
+}
 
-def test_valid_payload_parsing_empty_params():
-    """Tests if a valid payload with empty parameters is parsed correctly."""
-    try:
-        request_data = AllocationRequest(**VALID_PAYLOAD_EMPTY_PARAMS)
-        assert request_data.parameters is not None
-        assert request_data.parameters.default_min_coverage is None
-        assert request_data.parameters.min_skus_per_store is None
-        assert request_data.parameters.restricted_brands_for_donation is None
-        assert len(request_data.products) == 2 # Check base data
-    except ValidationError as e:
-        pytest.fail(f"Valid payload with empty parameters failed validation: {e}")
+VALID_OUTLET_ASSORTMENT_RULE = {
+    "metier": "MetA",
+    "subaxis": "Sub1",
+    "brand": "BrandX",
+    "max_skus": 10
+}
 
+VALID_PUSH_NEW_SKU_RULE = {
+    "division": "DivA",
+    "subaxis": "Sub1",
+    "push_quantity": 20
+}
 
-# --- Original Test Cases (Need modification to include parameters) ---
-# Note: The original tests might fail now as they lack the 'parameters' field.
-# We should update them or create new ones based on VALID_PAYLOAD_WITH_PARAMS.
-# For now, let's keep the original structure but use the new base payload.
+VALID_OPTIMIZATION_PARAMETERS = {
+    "seasonality_coefficient": 1.0,
+    "restricted_brands_for_donation": ["BrandY"],
+    "coverage_days_rules": [VALID_COVERAGE_RULE],
+    "outlet_sku_capacity_rules": [VALID_OUTLET_CAPACITY_RULE],
+    "outlet_assortment_rules": [VALID_OUTLET_ASSORTMENT_RULE],
+    "push_new_sku_rules": [VALID_PUSH_NEW_SKU_RULE]
+}
 
-def test_valid_payload_parsing():
-    """Tests if a valid payload (now requiring params) is parsed correctly."""
-    # This test now uses the payload with parameters
-    try:
-        request_data = AllocationRequest(**VALID_PAYLOAD_WITH_PARAMS) # Use payload with params
-        # Basic checks to ensure base data is still parsed alongside params
-        assert len(request_data.products) == 2
-        assert request_data.products[0].sku == "SKU001"
-        assert len(request_data.channels) == 2
-        assert request_data.channels[1].channel_type == "donation"
-        assert len(request_data.inventory) == 2
-        assert request_data.inventory[1].quantity == 30
-        assert len(request_data.demand) == 2
-        assert request_data.demand[0].demand_quantity == 20
-        assert len(request_data.revenue) == 2
-        assert request_data.revenue[1].revenue_per_unit == 8.0
-        # Check parameters are parsed
-        assert request_data.parameters.default_min_coverage == 0.75
-    except ValidationError as e:
-        pytest.fail(f"Valid payload with parameters failed validation: {e}")
+VALID_ALLOCATION_REQUEST_PAYLOAD = {
+    "parameters": VALID_OPTIMIZATION_PARAMETERS,
+    "products": [VALID_PRODUCT_INPUT],
+    "channels": [VALID_CHANNEL_INPUT, {"id": "OUTLET1", "capacity": 200, "channel_type": "outlet"}],
+    "inventory": [VALID_INVENTORY_INPUT],
+    "demand": [VALID_DEMAND_INPUT]
+}
 
-def test_missing_parameters_field():
-    """Tests validation error when the entire 'parameters' field is missing."""
-    invalid_payload = json.loads(json.dumps(BASE_VALID_PAYLOAD)) # Use base without params key
+# --- Test Cases for Individual Schemas ---
+
+def test_product_input_valid():
+    product = ProductInput(**VALID_PRODUCT_INPUT)
+    assert product.sku == "SKU001"
+    assert product.abc_class == "A"
+    assert product.cogs == 10.5
+
+def test_product_input_invalid_abc_class():
+    invalid_product = VALID_PRODUCT_INPUT.copy()
+    invalid_product["abc_class"] = "D"
+    with pytest.raises(ValidationError):
+        ProductInput(**invalid_product)
+
+def test_channel_input_valid():
+    channel = ChannelInput(**VALID_CHANNEL_INPUT)
+    assert channel.id == "STORE1"
+    assert channel.capacity == 100
+    assert channel.channel_type == "store"
+
+def test_channel_input_missing_capacity():
+    invalid_channel = VALID_CHANNEL_INPUT.copy()
+    del invalid_channel["capacity"]
+    with pytest.raises(ValidationError):
+        ChannelInput(**invalid_channel)
+
+def test_inventory_input_valid():
+    inventory = InventoryInput(**VALID_INVENTORY_INPUT)
+    assert inventory.product_sku == "SKU001"
+    assert inventory.quantity == 50
+
+def test_inventory_input_negative_quantity():
+    invalid_inventory = VALID_INVENTORY_INPUT.copy()
+    invalid_inventory["quantity"] = -10
+    with pytest.raises(ValidationError):
+        InventoryInput(**invalid_inventory)
+
+def test_demand_input_valid():
+    demand = DemandInput(**VALID_DEMAND_INPUT)
+    assert demand.product_sku == "SKU001"
+    assert demand.channel_id == "STORE1"
+    assert demand.demand_quantity == 20
+
+def test_demand_input_zero_demand_quantity():
+    invalid_demand = VALID_DEMAND_INPUT.copy()
+    invalid_demand["demand_quantity"] = 0
+    with pytest.raises(ValidationError):
+        DemandInput(**invalid_demand)
+
+def test_coverage_days_rule_valid():
+    rule = CoverageDaysRule(**VALID_COVERAGE_RULE)
+    assert rule.channel_id == "STORE1"
+    assert rule.abc_class == "A"
+    assert rule.coverage_days == 7
+
+def test_coverage_days_rule_invalid_abc_class():
+    invalid_rule = VALID_COVERAGE_RULE.copy()
+    invalid_rule["abc_class"] = "X"
+    with pytest.raises(ValidationError):
+        CoverageDaysRule(**invalid_rule)
+
+def test_outlet_sku_capacity_rule_valid():
+    rule = OutletSKUCapacityRule(**VALID_OUTLET_CAPACITY_RULE)
+    assert rule.channel_id == "OUTLET1"
+    assert rule.max_skus == 50
+
+def test_outlet_sku_capacity_rule_negative_max_skus():
+    invalid_rule = VALID_OUTLET_CAPACITY_RULE.copy()
+    invalid_rule["max_skus"] = -5
+    with pytest.raises(ValidationError):
+        OutletSKUCapacityRule(**invalid_rule)
+
+def test_outlet_assortment_rule_valid():
+    rule = OutletAssortmentRule(**VALID_OUTLET_ASSORTMENT_RULE)
+    assert rule.metier == "MetA"
+    assert rule.max_skus == 10
+
+def test_push_new_sku_rule_valid():
+    rule = PushNewSKURule(**VALID_PUSH_NEW_SKU_RULE)
+    assert rule.division == "DivA"
+    assert rule.push_quantity == 20
+
+# --- Test Cases for OptimizationParameters ---
+
+def test_optimization_parameters_valid():
+    params = OptimizationParameters(**VALID_OPTIMIZATION_PARAMETERS)
+    assert params.seasonality_coefficient == 1.0
+    assert params.restricted_brands_for_donation == ["BrandY"]
+    assert len(params.coverage_days_rules) == 1
+    assert params.coverage_days_rules[0].coverage_days == 7
+
+def test_optimization_parameters_empty_lists():
+    params_data = VALID_OPTIMIZATION_PARAMETERS.copy()
+    params_data["coverage_days_rules"] = []
+    params_data["outlet_sku_capacity_rules"] = []
+    params_data["outlet_assortment_rules"] = []
+    params_data["push_new_sku_rules"] = []
+    params = OptimizationParameters(**params_data)
+    assert len(params.coverage_days_rules) == 0
+    assert len(params.outlet_sku_capacity_rules) == 0
+
+def test_optimization_parameters_invalid_rule_type():
+    invalid_params = VALID_OPTIMIZATION_PARAMETERS.copy()
+    invalid_params["coverage_days_rules"] = [{"channel_id": "CH1", "abc_class": "A", "coverage_days": "seven"}] # Invalid type
+    with pytest.raises(ValidationError):
+        OptimizationParameters(**invalid_params)
+
+# --- Test Cases for AllocationRequest ---
+
+def test_allocation_request_valid_payload():
+    request_data = AllocationRequest(**VALID_ALLOCATION_REQUEST_PAYLOAD)
+    assert len(request_data.products) == 1
+    assert request_data.products[0].sku == "SKU001"
+    assert len(request_data.channels) == 2
+    assert request_data.channels[0].id == "STORE1"
+    assert len(request_data.inventory) == 1
+    assert request_data.inventory[0].quantity == 50
+    assert len(request_data.demand) == 1
+    assert request_data.demand[0].demand_quantity == 20
+    assert request_data.parameters.seasonality_coefficient == 1.0
+    assert len(request_data.parameters.coverage_days_rules) == 1
+
+def test_allocation_request_missing_parameters_field():
+    invalid_payload = VALID_ALLOCATION_REQUEST_PAYLOAD.copy()
+    del invalid_payload["parameters"]
     with pytest.raises(ValidationError) as excinfo:
         AllocationRequest(**invalid_payload)
-    # Check that the error message indicates the 'parameters' field is required/missing
-    error_string = str(excinfo.value)
-    assert "parameters" in error_string # Check for the field name itself
-    assert "Field required" in error_string # Check for the specific error type text
+    assert "parameters" in str(excinfo.value)
+    assert "Field required" in str(excinfo.value)
 
-
-def test_missing_required_field_in_base():
-    """Tests validation error for missing required fields in base data (e.g., product sku)."""
-    invalid_payload = json.loads(json.dumps(VALID_PAYLOAD_WITH_PARAMS)) # Deep copy
-    del invalid_payload["products"][0]["sku"]
-    with pytest.raises(ValidationError):
-        AllocationRequest(**invalid_payload)
-
-def test_invalid_data_type_in_base():
-    """Tests validation error for incorrect data types in base data (e.g., capacity as string)."""
-    invalid_payload = json.loads(json.dumps(VALID_PAYLOAD_WITH_PARAMS)) # Deep copy
-    invalid_payload["channels"][0]["capacity"] = "not-a-number"
-    with pytest.raises(ValidationError):
-        AllocationRequest(**invalid_payload)
-
-def test_negative_quantity_in_base():
-    """Tests validation error for negative quantity in base data."""
-    invalid_payload = json.loads(json.dumps(VALID_PAYLOAD_WITH_PARAMS)) # Deep copy
-    invalid_payload["inventory"][0]["quantity"] = -10
-    with pytest.raises(ValidationError):
-        AllocationRequest(**invalid_payload)
-
-def test_invalid_coverage_ratio_in_base():
-    """Tests validation error for coverage ratio outside [0, 1] in base data."""
-    invalid_payload = json.loads(json.dumps(VALID_PAYLOAD_WITH_PARAMS)) # Deep copy
-    invalid_payload["channels"][0]["min_coverage"] = 1.5
-    with pytest.raises(ValidationError):
-        AllocationRequest(**invalid_payload)
-
-def test_invalid_channel_type_in_base():
-    """Tests validation error for unknown channel type in base data."""
-    invalid_payload = json.loads(json.dumps(VALID_PAYLOAD_WITH_PARAMS)) # Deep copy
-    invalid_payload["channels"][0]["channel_type"] = "warehouse" # Not in Literal
-    with pytest.raises(ValidationError):
-        AllocationRequest(**invalid_payload)
-
-def test_inventory_sku_not_in_products_with_params():
-    """Tests validation error when inventory SKU doesn't exist in products list (with params)."""
-    invalid_payload = json.loads(json.dumps(VALID_PAYLOAD_WITH_PARAMS)) # Deep copy
+def test_allocation_request_inventory_sku_not_in_products():
+    invalid_payload = VALID_ALLOCATION_REQUEST_PAYLOAD.copy()
     invalid_payload["inventory"].append({"product_sku": "SKU999", "quantity": 5})
     with pytest.raises(ValidationError) as excinfo:
         AllocationRequest(**invalid_payload)
     assert "Inventory item SKU 'SKU999' not found in products list" in str(excinfo.value)
 
-def test_demand_channel_not_in_channels_with_params():
-    """Tests validation error when demand channel ID doesn't exist in channels list (with params)."""
-    invalid_payload = json.loads(json.dumps(VALID_PAYLOAD_WITH_PARAMS)) # Deep copy
+def test_allocation_request_demand_channel_not_in_channels():
+    invalid_payload = VALID_ALLOCATION_REQUEST_PAYLOAD.copy()
     invalid_payload["demand"].append({"product_sku": "SKU001", "channel_id": "STORE99", "demand_quantity": 10})
     with pytest.raises(ValidationError) as excinfo:
         AllocationRequest(**invalid_payload)
     assert "Demand item Channel ID 'STORE99' not found in channels list" in str(excinfo.value)
 
-def test_revenue_product_not_in_products_with_params():
-    """Tests validation error when revenue product SKU doesn't exist in products list (with params)."""
-    invalid_payload = json.loads(json.dumps(VALID_PAYLOAD_WITH_PARAMS)) # Deep copy
-    invalid_payload["revenue"].append({"product_sku": "SKU888", "channel_id": "STORE1", "revenue_per_unit": 5.0})
-    with pytest.raises(ValidationError) as excinfo:
-        AllocationRequest(**invalid_payload)
-    assert "Revenue item SKU 'SKU888' not found in products list" in str(excinfo.value)
-
-
-# --- Tests specific to OptimizationParameters ---
-
-def test_invalid_parameter_type():
-    """Tests validation error for incorrect data type in parameters."""
-    invalid_payload = json.loads(json.dumps(VALID_PAYLOAD_WITH_PARAMS))
-    invalid_payload["parameters"]["min_skus_per_store"] = "two" # Should be integer
+def test_allocation_request_invalid_product_data():
+    invalid_payload = VALID_ALLOCATION_REQUEST_PAYLOAD.copy()
+    invalid_payload["products"] = [{"sku": "", "donation_eligible": True}] # Invalid SKU
     with pytest.raises(ValidationError):
         AllocationRequest(**invalid_payload)
 
-def test_invalid_parameter_value_coverage():
-    """Tests validation error for parameter value outside allowed range (coverage)."""
-    invalid_payload = json.loads(json.dumps(VALID_PAYLOAD_WITH_PARAMS))
-    invalid_payload["parameters"]["default_min_coverage"] = 1.1 # Max is 1.0
+def test_allocation_request_invalid_channel_data():
+    invalid_payload = VALID_ALLOCATION_REQUEST_PAYLOAD.copy()
+    invalid_payload["channels"] = [{"id": "CH1", "capacity": -10, "channel_type": "store"}] # Invalid capacity
     with pytest.raises(ValidationError):
         AllocationRequest(**invalid_payload)
 
-def test_invalid_parameter_value_skus():
-    """Tests validation error for parameter value outside allowed range (min skus)."""
-    invalid_payload = json.loads(json.dumps(VALID_PAYLOAD_WITH_PARAMS))
-    invalid_payload["parameters"]["min_skus_per_store"] = -1 # Min is 0
-    with pytest.raises(ValidationError):
-        AllocationRequest(**invalid_payload)
-
-def test_invalid_parameter_value_brands():
-    """Tests validation error for invalid type in restricted brands list."""
-    invalid_payload = json.loads(json.dumps(VALID_PAYLOAD_WITH_PARAMS))
-    invalid_payload["parameters"]["restricted_brands_for_donation"] = ["BrandY", 123] # Should be list of strings
+def test_allocation_request_invalid_demand_data():
+    invalid_payload = VALID_ALLOCATION_REQUEST_PAYLOAD.copy()
+    invalid_payload["demand"] = [{"product_sku": "SKU001", "channel_id": "STORE1", "demand_quantity": -5}] # Invalid demand_quantity
     with pytest.raises(ValidationError):
         AllocationRequest(**invalid_payload)

@@ -92,6 +92,12 @@ class TestSolver(unittest.TestCase):
         }
         self.sample_in_store_inventory_df = pd.DataFrame(self.sample_in_store_inventory_df_data)
 
+        self.sample_sellin_ranking_dict = { # Sample sellin rankings for testing objective function
+            'P1': 90, # High sellin for P1
+            'P2': 20, # Low sellin for P2
+            'P3': 70, # Medium sellin for P3
+            'P4': 5,  # Very low sellin for P4
+        }
 
     def test_basic(self):
         self.assertEqual(1, 1)
@@ -222,10 +228,19 @@ P3;C1_store;C"""
         mock_abc_map = self._get_mock_abc_map_for_opt()
         model, status, results = solver.optimize_allocation(
             self.sample_products_df, self.sample_channels_df, self.sample_inventory_df,
-            self.sample_demand_dict, self.params, self.sample_existing_stock_dict, mock_abc_map
+            self.sample_demand_dict, self.params, self.sample_existing_stock_dict, mock_abc_map,
+            self.sample_sellin_ranking_dict # Pass sellin_ranking_dict
         )
         self.assertEqual(status, 'Optimal')
-        # self.assertTrue(len(results) > 0) # Actual allocations depend heavily on mock_abc_map and rules
+        self.assertTrue(len(results) > 0) # Should have some allocations
+        # Verify structure of results, including plant_code
+        for r in results:
+            self.assertIn('product_sku', r)
+            self.assertIn('plant_code', r)
+            self.assertIn('channel_id', r)
+            self.assertIn('quantity', r)
+            self.assertIsInstance(r['quantity'], int)
+            self.assertTrue(r['quantity'] >= 0)
 
     def test_optimize_allocation_zero_inventory(self):
         inventory_df_zero = self.sample_inventory_df.copy()
@@ -235,7 +250,8 @@ P3;C1_store;C"""
 
         model, status, results = solver.optimize_allocation(
             self.sample_products_df, self.sample_channels_df, inventory_df_zero,
-            self.sample_demand_dict, self.params, self.sample_existing_stock_dict, mock_abc_map
+            self.sample_demand_dict, self.params, self.sample_existing_stock_dict, mock_abc_map,
+            self.sample_sellin_ranking_dict # Pass sellin_ranking_dict
         )
         self.assertEqual(status, 'Optimal')
         self.assertEqual(len(results), 0)
@@ -247,7 +263,8 @@ P3;C1_store;C"""
         
         model, status, results = solver.optimize_allocation(
             self.sample_products_df, self.sample_channels_df, self.sample_inventory_df,
-            demand_dict_zero, self.params, self.sample_existing_stock_dict, mock_abc_map_all_c
+            demand_dict_zero, self.params, self.sample_existing_stock_dict, mock_abc_map_all_c,
+            self.sample_sellin_ranking_dict # Pass sellin_ranking_dict
         )
         self.assertEqual(status, 'Optimal')
         self.assertEqual(len(results), 0)
@@ -258,7 +275,8 @@ P3;C1_store;C"""
         
         model, status, results = solver.optimize_allocation(
             self.sample_products_df, self.sample_channels_df, self.sample_inventory_df,
-            self.sample_demand_dict, params_restricted, self.sample_existing_stock_dict, mock_abc_map
+            self.sample_demand_dict, params_restricted, self.sample_existing_stock_dict, mock_abc_map,
+            self.sample_sellin_ranking_dict # Pass sellin_ranking_dict
         )
         self.assertEqual(status, 'Optimal')
         for r in results:
@@ -275,7 +293,8 @@ P3;C1_store;C"""
 
         model, status, results = solver.optimize_allocation(
             self.sample_products_df, self.sample_channels_df, self.sample_inventory_df,
-            self.sample_demand_dict, params_coverage, self.sample_existing_stock_dict, mock_abc_map
+            self.sample_demand_dict, params_coverage, self.sample_existing_stock_dict, mock_abc_map,
+            self.sample_sellin_ranking_dict # Pass sellin_ranking_dict
         )
         self.assertEqual(status, 'Optimal')
         for r in results:
@@ -292,7 +311,8 @@ P3;C1_store;C"""
         
         model, status, results = solver.optimize_allocation(
             self.sample_products_df, self.sample_channels_df, self.sample_inventory_df,
-            self.sample_demand_dict, params_push, self.sample_existing_stock_dict, mock_abc_map
+            self.sample_demand_dict, params_push, self.sample_existing_stock_dict, mock_abc_map,
+            self.sample_sellin_ranking_dict # Pass sellin_ranking_dict
         )
         self.assertEqual(status, 'Optimal')
         p1_c1_allocation = 0
@@ -301,6 +321,238 @@ P3;C1_store;C"""
                 p1_c1_allocation = r['quantity']
                 break
         self.assertTrue(p1_c1_allocation <= 10)
+
+    def test_optimize_allocation_new_sku_prioritization_high_sellin(self):
+        # P1 is NEW, high sellin (90). P2 is C, low demand (40).
+        # P1 (DivX, Sub1), P2 (DivX, Sub2)
+        mock_abc_map = {
+            ('P1', 'C1_store'): 'NEW',
+            ('P2', 'C1_store'): 'C',
+            ('P3', 'C1_store'): 'A', # Ensure A/B are still high priority
+        }
+        # Ensure enough inventory for P1 and P2 to be allocated
+        inventory_df_test = pd.DataFrame({
+            'product_ean': ['P1', 'P2', 'P3'],
+            'plant': ['PlantA', 'PlantA', 'PlantA'],
+            'quantity': [100, 100, 100], # Ample stock
+            'available_stock': [100, 100, 100]
+        })
+        demand_dict_test = {
+            ('P1', 'C1_store'): 50, # Demand for P1
+            ('P2', 'C1_store'): 10, # Low demand for P2
+            ('P3', 'C1_store'): 100, # High demand for P3
+        }
+        sellin_ranking_dict_test = {
+            'P1': 90, # High sellin
+            'P2': 0,  # Not a NEW SKU, so sellin doesn't apply directly, but for completeness
+            'P3': 0,
+        }
+
+        # Expected scores (approximate, based on solver.py constants):
+        # A_B_CLASS_SCORE = 2.0
+        # DEFAULT_ALLOCATION_SCORE = 1.0
+        # SELLIN_RANKING_MAX_VALUE = 100
+        # C_CLASS_DEMAND_SCALING_FACTOR = 0.001
+        # NEW_SKU_RANKING_WEIGHT = 1.0
+        # C_CLASS_DEMAND_WEIGHT = 0.5
+
+        # P1 (NEW): 1.0 * (1.0 + (90/100)) = 1.9
+        # P2 (C): 0.5 * (1.0 + (10 * 0.001)) = 0.5 * 1.01 = 0.505
+        # P3 (A): 2.0
+
+        model, status, results = solver.optimize_allocation(
+            self.sample_products_df, self.sample_channels_df, inventory_df_test,
+            demand_dict_test, self.params, self.sample_existing_stock_dict, mock_abc_map,
+            sellin_ranking_dict_test
+        )
+        self.assertEqual(status, 'Optimal')
+        
+        # Extract allocations for P1, P2, P3 to C1_store
+        alloc_p1_c1 = sum(r['quantity'] for r in results if r['product_sku'] == 'P1' and r['channel_id'] == 'C1_store')
+        alloc_p2_c1 = sum(r['quantity'] for r in results if r['product_sku'] == 'P2' and r['channel_id'] == 'C1_store')
+        alloc_p3_c1 = sum(r['quantity'] for r in results if r['product_sku'] == 'P3' and r['channel_id'] == 'C1_store')
+
+        # P3 (A class) should be prioritized highest
+        self.assertTrue(alloc_p3_c1 > alloc_p1_c1)
+        # P1 (NEW, high sellin) should be prioritized over P2 (C, low demand)
+        self.assertTrue(alloc_p1_c1 > alloc_p2_c1)
+        logger.debug(f"Test: High Sellin NEW SKU (P1) vs Low Demand C Class (P2) - P1 alloc: {alloc_p1_c1}, P2 alloc: {alloc_p2_c1}, P3 alloc: {alloc_p3_c1}")
+
+
+    def test_optimize_allocation_c_class_high_demand_prioritization(self):
+        # P1 is C, high demand (100). P2 is NEW, low sellin (20).
+        mock_abc_map = {
+            ('P1', 'C1_store'): 'C',
+            ('P2', 'C1_store'): 'NEW',
+            ('P3', 'C1_store'): 'B', # Ensure A/B are still high priority
+        }
+        inventory_df_test = pd.DataFrame({
+            'product_ean': ['P1', 'P2', 'P3'],
+            'plant': ['PlantA', 'PlantA', 'PlantA'],
+            'quantity': [100, 100, 100], # Ample stock
+            'available_stock': [100, 100, 100]
+        })
+        demand_dict_test = {
+            ('P1', 'C1_store'): 100, # High demand for P1
+            ('P2', 'C1_store'): 50,  # Demand for P2
+            ('P3', 'C1_store'): 100, # High demand for P3
+        }
+        sellin_ranking_dict_test = {
+            'P1': 0,
+            'P2': 20, # Low sellin
+            'P3': 0,
+        }
+
+        # Expected scores (approximate):
+        # P1 (C): 0.5 * (1.0 + (100 * 0.001)) = 0.5 * 1.1 = 0.55
+        # P2 (NEW): 1.0 * (1.0 + (20/100)) = 1.2
+        # P3 (B): 2.0
+
+        model, status, results = solver.optimize_allocation(
+            self.sample_products_df, self.sample_channels_df, inventory_df_test,
+            demand_dict_test, self.params, self.sample_existing_stock_dict, mock_abc_map,
+            sellin_ranking_dict_test
+        )
+        self.assertEqual(status, 'Optimal')
+
+        alloc_p1_c1 = sum(r['quantity'] for r in results if r['product_sku'] == 'P1' and r['channel_id'] == 'C1_store')
+        alloc_p2_c1 = sum(r['quantity'] for r in results if r['product_sku'] == 'P2' and r['channel_id'] == 'C1_store')
+        alloc_p3_c1 = sum(r['quantity'] for r in results if r['product_sku'] == 'P3' and r['channel_id'] == 'C1_store')
+
+        # P3 (B class) should be prioritized highest
+        self.assertTrue(alloc_p3_c1 > alloc_p2_c1)
+        # P2 (NEW, low sellin) should be prioritized over P1 (C, high demand)
+        # This is where the weights matter. P2 (score 1.2) > P1 (score 0.55)
+        self.assertTrue(alloc_p2_c1 > alloc_p1_c1)
+        logger.debug(f"Test: Low Sellin NEW SKU (P2) vs High Demand C Class (P1) - P2 alloc: {alloc_p2_c1}, P1 alloc: {alloc_p1_c1}, P3 alloc: {alloc_p3_c1}")
+
+
+    def test_optimize_allocation_new_sku_no_sellin_ranking(self):
+        # P4 is NEW, but no sellin ranking provided (defaults to 0). P1 is C, medium demand.
+        mock_abc_map = {
+            ('P4', 'C1_store'): 'NEW',
+            ('P1', 'C1_store'): 'C',
+        }
+        inventory_df_test = pd.DataFrame({
+            'product_ean': ['P4', 'P1'],
+            'plant': ['PlantA', 'PlantA'],
+            'quantity': [100, 100], # Ample stock
+            'available_stock': [100, 100]
+        })
+        demand_dict_test = {
+            ('P4', 'C1_store'): 50, # Demand for P4
+            ('P1', 'C1_store'): 50, # Demand for P1
+        }
+        sellin_ranking_dict_test = {
+            'P1': 0, # Not a NEW SKU
+            # P4 is missing from sellin_ranking_dict_test, so its rank will be 0
+        }
+
+        # Expected scores (approximate):
+        # P4 (NEW, no sellin): 1.0 * (1.0 + (0/100)) = 1.0
+        # P1 (C, demand 50): 0.5 * (1.0 + (50 * 0.001)) = 0.5 * 1.05 = 0.525
+
+        model, status, results = solver.optimize_allocation(
+            self.sample_products_df, self.sample_channels_df, inventory_df_test,
+            demand_dict_test, self.params, self.sample_existing_stock_dict, mock_abc_map,
+            sellin_ranking_dict_test
+        )
+        self.assertEqual(status, 'Optimal')
+
+        alloc_p4_c1 = sum(r['quantity'] for r in results if r['product_sku'] == 'P4' and r['channel_id'] == 'C1_store')
+        alloc_p1_c1 = sum(r['quantity'] for r in results if r['product_sku'] == 'P1' and r['channel_id'] == 'C1_store')
+
+        # P4 (NEW, no sellin) should still be prioritized over P1 (C, medium demand) due to NEW_SKU_RANKING_WEIGHT
+        self.assertTrue(alloc_p4_c1 > alloc_p1_c1)
+        logger.debug(f"Test: NEW SKU (P4) with no sellin vs C Class (P1) - P4 alloc: {alloc_p4_c1}, P1 alloc: {alloc_p1_c1}")
+
+
+    def test_optimize_allocation_a_b_class_prioritization(self):
+        # P1 (A), P2 (B), P3 (NEW, high sellin), P4 (C, high demand)
+        mock_abc_map = {
+            ('P1', 'C1_store'): 'A',
+            ('P2', 'C1_store'): 'B',
+            ('P3', 'C1_store'): 'NEW',
+            ('P4', 'C1_store'): 'C',
+        }
+        inventory_df_test = pd.DataFrame({
+            'product_ean': ['P1', 'P2', 'P3', 'P4'],
+            'plant': ['PlantA', 'PlantA', 'PlantA', 'PlantA'],
+            'quantity': [100, 100, 100, 100], # Ample stock
+            'available_stock': [100, 100, 100, 100]
+        })
+        demand_dict_test = {
+            ('P1', 'C1_store'): 50,
+            ('P2', 'C1_store'): 50,
+            ('P3', 'C1_store'): 50,
+            ('P4', 'C1_store'): 100, # High demand for P4 (C class)
+        }
+        sellin_ranking_dict_test = {
+            'P3': 90, # High sellin for P3 (NEW)
+        }
+
+        # Expected scores (approximate):
+        # P1 (A): 2.0
+        # P2 (B): 2.0
+        # P3 (NEW, sellin 90): 1.0 * (1.0 + (90/100)) = 1.9
+        # P4 (C, demand 100): 0.5 * (1.0 + (100 * 0.001)) = 0.5 * 1.1 = 0.55
+
+        model, status, results = solver.optimize_allocation(
+            self.sample_products_df, self.sample_channels_df, inventory_df_test,
+            demand_dict_test, self.params, self.sample_existing_stock_dict, mock_abc_map,
+            sellin_ranking_dict_test
+        )
+        self.assertEqual(status, 'Optimal')
+
+        alloc_p1_c1 = sum(r['quantity'] for r in results if r['product_sku'] == 'P1' and r['channel_id'] == 'C1_store')
+        alloc_p2_c1 = sum(r['quantity'] for r in results if r['product_sku'] == 'P2' and r['channel_id'] == 'C1_store')
+        alloc_p3_c1 = sum(r['quantity'] for r in results if r['product_sku'] == 'P3' and r['channel_id'] == 'C1_store')
+        alloc_p4_c1 = sum(r['quantity'] for r in results if r['product_sku'] == 'P4' and r['channel_id'] == 'C1_store')
+
+        # A and B class should be highest priority
+        self.assertTrue(alloc_p1_c1 > alloc_p3_c1)
+        self.assertTrue(alloc_p2_c1 > alloc_p3_c1)
+        # NEW (high sellin) should be higher than C (high demand)
+        self.assertTrue(alloc_p3_c1 > alloc_p4_c1)
+        logger.debug(f"Test: A/B Class Prioritization - P1(A) alloc: {alloc_p1_c1}, P2(B) alloc: {alloc_p2_c1}, P3(NEW) alloc: {alloc_p3_c1}, P4(C) alloc: {alloc_p4_c1}")
+
+    def test_optimize_allocation_respects_available_stock_constraint(self):
+        # Scenario: StockToAllocate is high, but AvailableStock is low.
+        # Allocation should be limited by AvailableStock.
+        inventory_df_limited_available = pd.DataFrame({
+            'product_ean': ['P1', 'P2'],
+            'plant': ['PlantA', 'PlantA'],
+            'quantity': [100, 100], # StockToAllocate
+            'available_stock': [10, 50] # AvailableStock - P1 is limited by this
+        })
+        demand_dict_high = {
+            ('P1', 'C1_store'): 200, # High demand for P1
+            ('P2', 'C1_store'): 200, # High demand for P2
+        }
+        mock_abc_map = {
+            ('P1', 'C1_store'): 'A',
+            ('P2', 'C1_store'): 'A',
+        }
+        sellin_ranking_dict_empty = {}
+
+        model, status, results = solver.optimize_allocation(
+            self.sample_products_df, self.sample_channels_df, inventory_df_limited_available,
+            demand_dict_high, self.params, self.sample_existing_stock_dict, mock_abc_map,
+            sellin_ranking_dict_empty
+        )
+        self.assertEqual(status, 'Optimal')
+
+        # Check total allocation for P1 from PlantA
+        total_alloc_p1_plantA = sum(r['quantity'] for r in results if r['product_sku'] == 'P1' and r['plant_code'] == 'PlantA')
+        # Max allocatable for P1-PlantA is min(100, 10) = 10
+        self.assertEqual(total_alloc_p1_plantA, 10)
+
+        # Check total allocation for P2 from PlantA
+        total_alloc_p2_plantA = sum(r['quantity'] for r in results if r['product_sku'] == 'P2' and r['plant_code'] == 'PlantA')
+        # Max allocatable for P2-PlantA is min(100, 50) = 50
+        self.assertEqual(total_alloc_p2_plantA, 50)
+        logger.debug(f"Test: Available Stock Constraint - P1-PlantA alloc: {total_alloc_p1_plantA}, P2-PlantA alloc: {total_alloc_p2_plantA}")
+
 
 if __name__ == '__main__':
     unittest.main()
