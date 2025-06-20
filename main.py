@@ -26,12 +26,6 @@ CORS(app)
 db.init_app(app)
 jwt = JWTManager(app)
 
-# Helper function for EAN normalization
-def normalize_ean(ean_value: Optional[str]) -> Optional[str]:
-    if ean_value is None:
-        return None
-    return str(ean_value).lstrip('0')
-
 # === Standard Endpoints ===
 @app.route('/api/dashboard/metrics', methods=['GET'])
 @jwt_required()
@@ -78,7 +72,7 @@ def allocate_inventory(): # Older endpoint, seems to use DB data for DFs
         
         for alloc in allocation_result_list:
             new_allocation = Allocation(
-                product_ean=normalize_ean(str(alloc['product_sku'])), 
+                product_ean=str(alloc['product_sku']).lstrip('0'), # Apply lstrip('0') directly
                 channel_id_string=str(alloc['channel_id']),
                 quantity=int(alloc['quantity']),
                 allocation_date=datetime.now()
@@ -152,9 +146,9 @@ def get_ean_deep_dive_data_logic(ean_code_normalized: str): # Parameter is now n
         else: data_response["product_info"] = {"error": f"EAN {ean_code_normalized} not found in master data."}
 
         bad_stock_df_full = load_inventory_df(bad_stock_inventory_file_path)
-        # Assuming product_ean in bad_stock_df_full is also normalized if it comes from a similar source or is handled by load_inventory_df
-        bad_stock_df_full['product_ean_normalized'] = bad_stock_df_full['product_ean'].apply(normalize_ean)
-        ean_bad_stock_df = bad_stock_df_full[bad_stock_df_full['product_ean_normalized'] == ean_code_normalized]
+        # product_ean in bad_stock_df_full is already normalized by load_inventory_df in utils.py
+        # No need for an extra normalization step here.
+        ean_bad_stock_df = bad_stock_df_full[bad_stock_df_full['product_ean'] == ean_code_normalized] # Use 'product_ean' directly
         if not ean_bad_stock_df.empty:
             data_response["initial_stock"]["bad_stock_to_allocate"] = int(ean_bad_stock_df['quantity'].sum())
             data_response["initial_stock"]["bad_stock_plant_breakdown"] = [
@@ -183,11 +177,11 @@ def get_ean_deep_dive_data_logic(ean_code_normalized: str): # Parameter is now n
         
         channels_df = load_channels_df(channellist_file_path)
         
-        sellout_df_full = pd.read_csv(sellout_file_path, dtype={'barcode': str, 'store_code': str})
-        sellout_df_full['barcode_normalized'] = sellout_df_full['barcode'].apply(normalize_ean)
+        sellout_df_full = pd.read_csv(sellout_file_path, sep=';', dtype={'barcode': str, 'store_code': str}) # Added sep=';'
+        sellout_df_full['barcode_normalized'] = sellout_df_full['barcode'].astype(str).str.lstrip('0') # Apply lstrip('0') directly
         ean_sellout_df = sellout_df_full[sellout_df_full['barcode_normalized'] == ean_code_normalized]
         
-        in_store_inv_df_for_abc = pd.read_csv(instore_stock_file_path, dtype={'store_code': str, 'barcode': str})
+        in_store_inv_df_for_abc = pd.read_csv(instore_stock_file_path, sep=';', dtype={'store_code': str, 'barcode': str}) # Added sep=';'
         # Normalization of 'barcode' in in_store_inv_df_for_abc will be handled by calculate_abc_classification_and_new_skus
         
         single_ean_product_master_df = products_df_full[products_df_full.index == ean_code_normalized]
@@ -257,7 +251,7 @@ def get_ean_deep_dive_data_logic(ean_code_normalized: str): # Parameter is now n
 def ean_deep_dive_data_endpoint():
     ean = request.args.get('ean')
     if not ean: return jsonify({"error": "EAN parameter is required"}), 400
-    normalized_ean = normalize_ean(ean) # Normalize EAN
+    normalized_ean = str(ean).lstrip('0') # Apply lstrip('0') directly
     if not normalized_ean: return jsonify({"error": "Invalid EAN parameter after normalization"}), 400
     data, status_code = get_ean_deep_dive_data_logic(normalized_ean)
     return jsonify(data), status_code
@@ -286,10 +280,10 @@ def auto_allocate_endpoint():
         channels_df = load_channels_df(channellist_file_path)
         if channels_df.empty: return jsonify({'error': 'Failed to load channels data.'}), 500
         inventory_df = load_inventory_df(inventory_file_path) 
-        # Ensure product_ean in inventory_df is normalized if it's used in joins/merges with products_df
-        inventory_df['product_ean'] = inventory_df['product_ean'].apply(normalize_ean)
+        # EANs in inventory_df are already normalized by load_inventory_df in utils.py
+        # inventory_df['product_ean'] = inventory_df['product_ean'].apply(normalize_ean) # No longer needed here
 
-        demand_dict = load_demand_dict(os.path.join(base_data_path, 'InputData', 'sellout.csv')) # load_demand_dict should handle EAN normalization if needed
+        demand_dict = load_demand_dict(os.path.join(base_data_path, 'InputData', 'sellout.csv')) # load_demand_dict handles EAN normalization
         
         coverage_rules = load_optimization_rules(coverage_file_path, CoverageDaysRule, channel_id='channel_id', abc_class='abc_class', coverage_days='coverage_days')
         outlet_capacity_rules = load_optimization_rules(capacity_file_path, OutletSKUCapacityRule, channel_id='channel_id', division='operational_division', axe='operational_axe_label', max_skus='max_skus')
@@ -304,7 +298,7 @@ def auto_allocate_endpoint():
         existing_stock_dict = load_existing_stock_dict(instore_stock_file_path, intransit_stock_file_path) # Assumes keys are normalized by util
         
         try: 
-            raw_in_store_inventory_df = pd.read_csv(instore_stock_file_path, dtype={'store_code': str, 'barcode': str})
+            raw_in_store_inventory_df = pd.read_csv(instore_stock_file_path, sep=';', dtype={'store_code': str, 'barcode': str}) # Added sep=';'
             # Normalization of 'barcode' in raw_in_store_inventory_df will be handled by calculate_abc_classification_and_new_skus
         except FileNotFoundError: 
             raw_in_store_inventory_df = pd.DataFrame(columns=['store_code', 'barcode', 'physical_quantity'])
@@ -327,7 +321,7 @@ def auto_allocate_endpoint():
             app.logger.debug(f"Solver returned {len(allocation_results)} allocation entries.")
             for alloc_res in allocation_results:
                 db.session.add(Allocation(
-                    product_ean=normalize_ean(str(alloc_res['product_sku'])), # Ensure EAN is normalized before saving
+                    product_ean=str(alloc_res['product_sku']).lstrip('0'), # Apply lstrip('0') directly
                     plant_code=str(alloc_res['plant_code']), 
                     channel_id_string=str(alloc_res['channel_id']),
                     quantity=int(alloc_res['quantity']),
@@ -360,7 +354,7 @@ def save_manual_allocations():
                 app.logger.warning(f"Skipping change due to invalid id: {item_id}")
                 continue
             ean_original, plant_code = item_id.split('_', 1)
-            ean_normalized = normalize_ean(ean_original)
+            ean_normalized = str(ean_original).lstrip('0') # Apply lstrip('0') directly
             if not ean_normalized:
                 app.logger.warning(f"Skipping change due to invalid EAN after normalization: {ean_original}")
                 continue
@@ -424,20 +418,25 @@ def get_allocation_data():
         channel_ids = channels_df.index.tolist() if not channels_df.empty else []
         
         products_df = load_products_df(masterdata_file_path) # EANs in index are normalized
-        if products_df.empty: return jsonify({"allocationData": [], "channelColumns": channel_ids, "allocationStatus": "No Products"})
+        app.logger.debug(f"Products loaded: {len(products_df)} rows. Sample: {products_df.head().to_dict()}")
+        if products_df.empty: 
+            app.logger.warning("No products loaded, returning empty allocation data.")
+            return jsonify({"allocationData": [], "channelColumns": channel_ids, "allocationStatus": "No Products"})
         
         inventory_df = load_inventory_df(inventory_file_path)
-        inventory_df['product_ean'] = inventory_df['product_ean'].apply(normalize_ean) # Normalize EANs in inventory
+        #inventory_df['product_ean'] = inventory_df['product_ean'].apply(normalize_ean) # Normalize EANs in inventory
+        app.logger.debug(f"Inventory loaded: {len(inventory_df)} rows. Sample: {inventory_df.head().to_dict()}")
         
         products_df_to_merge = products_df.reset_index() # 'ean' is now a column, already normalized
         
         merged_df = pd.merge(products_df_to_merge, inventory_df, left_on='ean', right_on='product_ean', how='left', suffixes=('', '_inv'))
-        
+        app.logger.debug(f"Merged DataFrame created: {len(merged_df)} rows. Sample: {merged_df.head().to_dict()}")
+
         # Ensure correct columns are used after merge, especially if 'ean' was in both
         if 'ean_inv' in merged_df.columns: merged_df.drop(columns=['ean_inv'], inplace=True)
 
         merged_df['quantity'] = merged_df['quantity'].fillna(0).astype(int)
-        merged_df['available_stock'] = merged_df['available_stock'].fillna(0).astype(int)
+        merged_df['available_stock'] = pd.to_numeric(merged_df['available_stock'], errors='coerce').fillna(0).astype(int) # Ensure numeric conversion
         merged_df['plant'] = merged_df['plant'].fillna('N/A').astype(str)
         merged_df['stockOrigin'] = merged_df['stockOrigin'].fillna('N/A').astype(str)
         merged_df['flagExcess6months'] = merged_df['flagExcess6months'].fillna(0).astype(int)
@@ -448,12 +447,15 @@ def get_allocation_data():
         allocations_map = defaultdict(lambda: defaultdict(int))
         for alloc in db_allocations:
             # Ensure keys used for allocations_map are normalized
-            allocations_map[(normalize_ean(alloc.product_ean), alloc.plant_code)][alloc.channel_id_string] = alloc.quantity
+            allocations_map[(str(alloc.product_ean).lstrip('0'), alloc.plant_code)][alloc.channel_id_string] = alloc.quantity # Apply lstrip('0') directly
+        app.logger.debug(f"DB Allocations loaded: {len(db_allocations)} entries.")
         
         frontend_data = []
-        for _, row in merged_df.iterrows():
-            ean_val = normalize_ean(str(row.get('ean', 'N/A'))) # Ensure EAN is normalized
-            if not ean_val: continue # Skip if EAN is invalid after normalization
+        for idx, row in merged_df.iterrows():
+            ean_val = str(row.get('ean', 'N/A')).lstrip('0') # Apply lstrip('0') directly
+            if not ean_val: 
+                app.logger.warning(f"Skipping row {idx} due to invalid EAN after normalization: '{row.get('ean', 'N/A')}'")
+                continue 
 
             plant_code_val = str(row.get('plant', 'N/A')) 
             
@@ -478,8 +480,14 @@ def get_allocation_data():
                 'allocAccu': "0%", 'channels': channel_data,
                 'cogs': row.get('cogs', 0.0) * row.get('quantity', 0)
             }
-            frontend_data.append(item_data)
+            
+            # Apply the filter: only show items where units > 0 AND available_stock > 0
+            if item_data['units'] > 0 and item_data['available_stock'] > 0:
+                frontend_data.append(item_data)
+            else:
+                app.logger.debug(f"Skipping item {ean_val}_{plant_code_val} due to zero units ({item_data['units']}) or zero available_stock ({item_data['available_stock']}).")
         
+        app.logger.info(f"Prepared {len(frontend_data)} items for frontend display after filtering.")
         status_msg = "DB Allocations" if db_allocations else "No DB Allocations"
         return jsonify({"allocationData": frontend_data, "channelColumns": channel_ids, "allocationStatus": status_msg})
     except Exception as e:
@@ -509,7 +517,7 @@ if __name__ == '__main__':
             ]
             for p_data in sample_products_fe:
                 # Normalize EAN before creating Product
-                normalized_ean = normalize_ean(p_data['ean'])
+                normalized_ean = str(p_data['ean']).lstrip('0') # Apply lstrip('0') directly
                 if normalized_ean:
                     prod = Product(ean=normalized_ean, name=p_data['name'], brand=p_data['signature'], division=p_data['div'], hierarchy=p_data['hierarchy'], photo=p_data['photo'], cogs=p_data['cogs_per_unit'])
                     db.session.add(prod)

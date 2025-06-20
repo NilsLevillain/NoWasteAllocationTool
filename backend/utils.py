@@ -51,8 +51,8 @@ def load_products_df(file_path: str, ean_col: str = 'product_gtin',
                      description_col: str = 'product_description', cogs_col: str = 'unit_cost') -> pd.DataFrame:
     logger.info(f"Loading product data from: {file_path}")
     try:
-        df = pd.read_csv(file_path)
-        logger.debug(f"Successfully read CSV: {file_path}")
+        df = pd.read_csv(file_path, sep=';') # Added sep=';'
+        logger.debug(f"Successfully read CSV: {file_path} with semicolon delimiter.")
     except FileNotFoundError:
         logger.error(f"Product master data file not found: {file_path}")
         raise
@@ -194,7 +194,7 @@ def load_inventory_df(file_path: str, ean_col: str = 'ean_code', qty_col: str = 
                         flag6_col: str = 'FlagExcess6months', flag12_col: str = 'FlagExcess12months') -> pd.DataFrame:
     logger.info(f"Loading inventory data from: {file_path}")
     try:
-        df = pd.read_csv(file_path)
+        df = pd.read_csv(file_path, sep=';') # Added sep=';'
     except FileNotFoundError:
         logger.error(f"Inventory data file not found: {file_path}")
         raise
@@ -217,7 +217,8 @@ def load_inventory_df(file_path: str, ean_col: str = 'ean_code', qty_col: str = 
         flag6_col: 'flagExcess6months',
         flag12_col: 'flagExcess12months'
     })
-    idf['product_ean'] = idf['product_ean'].astype(str)
+    # EANs are expected to be clean strings now, just ensure they are strings and strip leading zeros
+    idf['product_ean'] = idf['product_ean'].astype(str).str.lstrip('0').fillna('')
     idf['plant'] = idf['plant'].astype(str) # This is the plant code
     idf['stockOrigin'] = idf['stockOrigin'].astype(str)
     idf['quantity'] = pd.to_numeric(idf['quantity'], errors='coerce').fillna(0)
@@ -265,7 +266,7 @@ def load_existing_stock_dict(in_store_fp: str, in_transit_fp: str,
     for fp, ean_c, chan_c, qty_c in files_to_process:
         logger.debug(f"Processing stock file: {fp}")
         try:
-            df = pd.read_csv(fp)
+            df = pd.read_csv(fp, sep=';') # Added sep=';'
         except FileNotFoundError:
             logger.error(f"Stock data file not found: {fp}")
             raise
@@ -277,11 +278,13 @@ def load_existing_stock_dict(in_store_fp: str, in_transit_fp: str,
             logger.error(f"Required columns missing in stock file {fp}. Expected: '{ean_c}', '{chan_c}', '{qty_c}'. Found: {df.columns.tolist()}")
             raise ValueError(f"Required columns missing in {fp}")
         
-        df_renamed = df[[ean_c, chan_c, qty_c]].rename(columns={ean_c:'ean', chan_c:'channel_id', qty_c:'quantity'})
-        df_renamed[['ean','channel_id']] = df_renamed[['ean','channel_id']].astype(str)
-        df_renamed['quantity'] = pd.to_numeric(df_renamed['quantity'], errors='coerce').fillna(0)
-        for _, r in df_renamed.iterrows():
-            stock[(r['ean'], r['channel_id'])] += r['quantity']
+    df_renamed = df[[ean_c, chan_c, qty_c]].rename(columns={ean_c:'ean', chan_c:'channel_id', qty_c:'quantity'})
+    # EANs are expected to be clean strings now, just ensure they are strings and strip leading zeros
+    df_renamed['ean'] = df_renamed['ean'].astype(str).str.lstrip('0').fillna('')
+    df_renamed['channel_id'] = df_renamed['channel_id'].astype(str)
+    df_renamed['quantity'] = pd.to_numeric(df_renamed['quantity'], errors='coerce').fillna(0)
+    for _, r in df_renamed.iterrows():
+        stock[(r['ean'], r['channel_id'])] += r['quantity']
     
     logger.info(f"Loaded existing stock for {len(stock)} product-channel combinations.")
     return dict(stock)
@@ -289,7 +292,7 @@ def load_existing_stock_dict(in_store_fp: str, in_transit_fp: str,
 def load_demand_dict(file_path: str, ean_col: str = 'barcode', channel_col: str = 'store_code', demand_qty_col: str = 'total_items_weekly') -> Dict[tuple, float]:
     logger.info(f"Loading demand data from: {file_path}")
     try:
-        df = pd.read_csv(file_path)
+        df = pd.read_csv(file_path, sep=';') # Added sep=';'
     except FileNotFoundError:
         logger.warning(f"Demand data file not found: {file_path}. Returning empty demand dictionary.")
         return {}
@@ -301,7 +304,9 @@ def load_demand_dict(file_path: str, ean_col: str = 'barcode', channel_col: str 
         logger.error(f"Required columns ('{ean_col}', '{channel_col}', '{demand_qty_col}') missing in demand file: {file_path}. Found: {df.columns.tolist()}")
         raise ValueError(f"Required columns missing in {file_path}")
     
-    df[[ean_col, channel_col]] = df[[ean_col, channel_col]].astype(str)
+    # EANs are expected to be clean strings now, just ensure they are strings and strip leading zeros
+    df[ean_col] = df[ean_col].astype(str).str.lstrip('0').fillna('')
+    df[channel_col] = df[channel_col].astype(str)
     df[demand_qty_col] = pd.to_numeric(df[demand_qty_col], errors='coerce').fillna(0)
     
     demand_dict = {}

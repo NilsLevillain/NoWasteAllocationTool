@@ -62,7 +62,7 @@ def calculate_abc_classification_and_new_skus(
     # Ensure correct types for relevant columns from in_store_inventory_df
     # These column names are fixed based on the expected structure of in_store_inventory.csv
     if not in_store_inventory_df.empty:
-        # Normalize EANs (barcode) by stripping leading zeros
+        # EANs are expected to be clean strings now, just ensure they are strings and strip leading zeros
         in_store_inventory_df['barcode'] = in_store_inventory_df['barcode'].astype(str).str.lstrip('0').fillna('')
         in_store_inventory_df['store_code'] = in_store_inventory_df['store_code'].astype(str)
         in_store_inventory_df['physical_quantity'] = pd.to_numeric(in_store_inventory_df['physical_quantity'], errors='coerce').fillna(0)
@@ -92,7 +92,7 @@ def calculate_abc_classification_and_new_skus(
             sep=';', 
             dtype={'barcode': str, 'store_code': str, 'abc_class': str}
         )
-        # Normalize EANs (barcode) by stripping leading zeros and ensure other key columns are strings
+        # EANs are expected to be clean strings now, just ensure they are strings and strip leading zeros
         abc_ranking_df['barcode'] = abc_ranking_df['barcode'].astype(str).str.lstrip('0').fillna('')
         abc_ranking_df['store_code'] = abc_ranking_df['store_code'].astype(str).fillna('')
         abc_ranking_df['abc_class'] = abc_ranking_df['abc_class'].astype(str).fillna('').str.upper() # Standardize to uppercase
@@ -377,11 +377,13 @@ if __name__ == '__main__':
         products_df = load_products_df(
             product_master_file,
             ean_col='product_gtin',
-            brand_col='operational_signature_label',
+            signature_col='operational_signature_label', # Corrected from brand_col
             div_col='operational_division',
             axe_col='operational_axe_label',
-            sub_col='operational_sub_axe_label',
-            met_col='operational_metier_label'
+            sub_axe_col='operational_sub_axe_label',
+            metier_col='operational_metier_label'
+            # sku_col and description_col will use default values from the function signature
+            # cogs_col will also use its default
         )
         
         channels_df = load_channels_df(
@@ -462,7 +464,7 @@ if __name__ == '__main__':
         logger.info(f"Loading in-store inventory from: {in_store_inventory_file} for ABC/NEW SKU calculation.")
         try:
             # Assuming standard column names 'store_code', 'barcode', 'physical_quantity'
-            raw_in_store_inventory_df = pd.read_csv(in_store_inventory_file, dtype={'store_code': str, 'barcode': str})
+            raw_in_store_inventory_df = pd.read_csv(in_store_inventory_file, sep=';', dtype={'store_code': str, 'barcode': str}) # Added sep=';'
             logger.info(f"Successfully loaded in-store inventory data: {raw_in_store_inventory_df.shape[0]} rows.")
         except FileNotFoundError:
             logger.error(f"In-store inventory file not found: {in_store_inventory_file}. Proceeding without it for NEW SKU, this may affect NEW classification.")
