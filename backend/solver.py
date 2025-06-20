@@ -19,6 +19,37 @@ if __name__ == "__main__":
 from backend.schemas import OptimizationParameters, CoverageDaysRule, OutletSKUCapacityRule, OutletAssortmentRule, PushNewSKURule
 
 # --- Logger Setup ---
+# For future tests, set this to the EAN string you want to filter for, or None to disable.
+# EANs are typically logged without leading zeros in this system.
+TARGET_EAN_FOR_LOGGING = '3600550817584'
+
+class EANLogFilter(logging.Filter):
+    def __init__(self, ean_to_filter=None):
+        super().__init__()
+        # Store the EAN to filter for, assuming it's already normalized (e.g., no leading zeros)
+        self.ean_to_filter = str(ean_to_filter) if ean_to_filter else None
+
+    def filter(self, record):
+        # If no EAN filter is active, pass all records.
+        if not self.ean_to_filter:
+            return True
+
+        message_content = record.getMessage() # Get the fully rendered message
+
+        # Check if the target EAN is present in the message content.
+        if self.ean_to_filter in message_content:
+            return True
+        
+        # If the target EAN is not in the message:
+        # Suppress DEBUG level messages, as they are likely details for other EANs or general debug info not relevant to the filtered EAN.
+        if record.levelno == logging.DEBUG:
+            return False
+            
+        # Allow INFO, WARNING, ERROR, CRITICAL messages to pass.
+        # These are often general status updates, summaries, or errors not specific to an EAN,
+        # or if they are for another EAN, they are important enough (e.g. an error) to show.
+        return True
+
 # Create a logger
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG) # Set default level to DEBUG to capture all messages
@@ -33,6 +64,12 @@ json_formatter = logging.Formatter('{"time": "%(asctime)s", "name": "%(name)s", 
 
 # Add formatter to ch
 ch.setFormatter(formatter) # Use standard formatter by default
+
+# Add EAN filter if TARGET_EAN_FOR_LOGGING is set
+if TARGET_EAN_FOR_LOGGING:
+    logger.info(f"EAN log filtering is active for EAN: {TARGET_EAN_FOR_LOGGING}")
+    ean_filter = EANLogFilter(ean_to_filter=TARGET_EAN_FOR_LOGGING)
+    ch.addFilter(ean_filter)
 
 # Add ch to logger
 if not logger.handlers: # Avoid adding multiple handlers if script is re-run in some contexts
@@ -172,6 +209,7 @@ def optimize_allocation(products_df: pd.DataFrame, channels_df: pd.DataFrame, in
     logger.debug(f"AvailableStock per EAN-Plant: {len(available_stock_per_ean_plant)} entries.")
 
     coverage_rules_dict = {(r.channel_id, r.abc_class): r.coverage_days for r in parameters.coverage_days_rules}
+    logger.debug(f"Coverage Rules Dictionary created with {len(coverage_rules_dict)} entries: {coverage_rules_dict}") # Log the dict
     outlet_capacity_dict = {(r.channel_id, r.division, r.axe): r.max_skus for r in parameters.outlet_sku_capacity_rules}
     outlet_assortment_dict = {(r.metier, r.subaxis, r.brand): r.max_skus for r in parameters.outlet_assortment_rules}
     push_new_sku_lookup = {(r.division, r.subaxis): r.push_quantity for r in parameters.push_new_sku_rules}
@@ -261,9 +299,12 @@ def optimize_allocation(products_df: pd.DataFrame, channels_df: pd.DataFrame, in
     for c in channels: 
         for p_ean in products: # p_ean is an EAN
             plants_for_this_ean = [pl for ean_tuple, pl in ean_plant_pairs if ean_tuple == p_ean]
-            if not plants_for_this_ean: continue
+            if not plants_for_this_ean:
+                logger.debug(f"EAN {p_ean} has no plants in ean_plant_pairs. Skipping coverage/push constraints for channel {c}.")
+                continue
 
             abc_class = product_channel_abc_map.get((p_ean, c), 'C') 
+            logger.debug(f"Coverage/Push: EAN {p_ean}, Channel {c}, ABC Class: {abc_class}")
             current_stock_for_pc = existing_stock_dict.get((p_ean, c), 0) # This is EAN-Channel level existing stock
 
             if abc_class == 'NEW':
@@ -271,19 +312,28 @@ def optimize_allocation(products_df: pd.DataFrame, channels_df: pd.DataFrame, in
                 push_qty = push_new_sku_lookup.get((div, sub), 0) if div and sub else 0
                 # Sum of allocations for this EAN to this Channel, across all plants, must be <= push_qty
                 model += pulp.lpSum(x[p_ean, pl_specific, c] for pl_specific in plants_for_this_ean) <= push_qty, f"Push_New_SKU_{p_ean}_{c}"
-                logger.debug(f"Push new SKU constraint for EAN:{p_ean} C:{c} (NEW): sum_plants(qty) <= {push_qty}")
+                logger.debug(f"Push new SKU constraint for EAN:{p_ean} C:{c} (NEW): sum_plants(qty) <= {push_qty}. Applied.")
             else: 
-                cov_days = coverage_rules_dict.get((c, abc_class)) 
+                # Get channel type for the current channel ID c
+                channel_type_for_c = channels_df.loc[c, 'channel_type']
+                lookup_key = (channel_type_for_c, abc_class)
+                logger.debug(f"Coverage lookup: EAN {p_ean}, C_ID {c}, C_Type {channel_type_for_c}, ABC {abc_class}. Using key: {lookup_key}")
+                cov_days = coverage_rules_dict.get(lookup_key) 
+                logger.debug(f"Coverage lookup result for EAN {p_ean}, C_ID {c} (Type {channel_type_for_c}), ABC {abc_class} (key {lookup_key}): cov_days = {cov_days} (Type: {type(cov_days)})")
+                
                 if cov_days is not None and cov_days >= 0:
                     adj_demand = demand_dict.get((p_ean, c), 0) * parameters.seasonality_coefficient # EAN-Channel demand
+                    logger.debug(f"Coverage calc: EAN {p_ean}, C_ID {c}. Adjusted demand: {adj_demand}, Current stock: {current_stock_for_pc}, Cov_days: {cov_days}")
                     if adj_demand > 0:
-                        allow_alloc = max(0, (adj_demand / 7.0) * cov_days - current_stock_for_pc)
+                        allow_alloc = max(0, (adj_demand / 14.0) * cov_days - current_stock_for_pc)
                         # Sum of allocations for this EAN to this Channel, across all plants
                         model += pulp.lpSum(x[p_ean, pl_specific, c] for pl_specific in plants_for_this_ean) <= allow_alloc, f"Max_Coverage_Days_{p_ean}_{c}"
-                        logger.debug(f"Coverage constraint for EAN:{p_ean} C:{c} (ABC:{abc_class}): sum_plants(qty) <= {allow_alloc}")
+                        logger.debug(f"Coverage constraint for EAN:{p_ean} C_ID:{c} (ABC:{abc_class}): sum_plants(qty) <= {allow_alloc}. Applied.")
                     else: 
                         model += pulp.lpSum(x[p_ean, pl_specific, c] for pl_specific in plants_for_this_ean) <= 0, f"Max_Coverage_Days_Zero_Demand_{p_ean}_{c}"
-                        logger.debug(f"Coverage constraint for EAN:{p_ean} C:{c} (ABC:{abc_class}): Zero demand, sum_plants(qty) <= 0")
+                        logger.debug(f"Coverage constraint for EAN:{p_ean} C_ID:{c} (ABC:{abc_class}): Zero demand, sum_plants(qty) <= 0. Applied.")
+                else:
+                    logger.debug(f"Coverage constraint for EAN:{p_ean} C_ID:{c} (ABC:{abc_class}): Skipped (cov_days is None or negative: {cov_days}).")
     
     if parameters.restricted_brands_for_donation:
         logger.info("Adding restricted brands for donation constraints.")

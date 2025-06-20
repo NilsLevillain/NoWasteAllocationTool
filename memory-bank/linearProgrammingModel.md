@@ -57,7 +57,7 @@ Where:
 ### 3. Coverage Days Constraints (Per EAN-Channel, Summing Over Plants)
 
 For products with existing ABC classification (not NEW), the total quantity of an EAN allocated to a channel (summed across all plants it's sourced from) is limited by coverage days.
-∑(plant∈PL_p) x[p, plant, c] ≤ max(0, (demand[p,c] / 7.0) * coverage_days[c,abc_class] - current_stock[p,c])
+∑(plant∈PL_p) x[p, plant, c] ≤ max(0, (demand[p,c] / 7.0) * coverage_days[c,abc_class] - current_stock[p,c])s
 For all product EANs `p` and channels `c`.
 
 Where:

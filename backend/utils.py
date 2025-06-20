@@ -319,8 +319,10 @@ def load_demand_dict(file_path: str, ean_col: str = 'barcode', channel_col: str 
 def load_optimization_rules(file_path: str, rule_type: Type[Union[CoverageDaysRule, OutletSKUCapacityRule, OutletAssortmentRule, PushNewSKURule]],
                             sheet_name: str = 'Feuil1', **column_mappings) -> List[Union[CoverageDaysRule, OutletSKUCapacityRule, OutletAssortmentRule, PushNewSKURule]]:
     logger.info(f"Loading {rule_type.__name__} rules from: {file_path}, Sheet: {sheet_name}")
+    logger.debug(f"Using column mappings for {rule_type.__name__}: {column_mappings}")
     try:
         df = pd.read_excel(file_path, sheet_name=sheet_name)
+        logger.debug(f"Successfully read Excel file {file_path} for {rule_type.__name__}. DataFrame head:\n{df.head().to_string()}")
     except FileNotFoundError:
         logger.error(f"Rules file not found: {file_path}")
         raise
@@ -347,6 +349,7 @@ def load_optimization_rules(file_path: str, rule_type: Type[Union[CoverageDaysRu
         try:
             # rule_data keys should be pydantic field names, values from excel row using excel col name
             rule_data = {pydantic_field: r[excel_col] for pydantic_field, excel_col in column_mappings.items()}
+            logger.debug(f"Processed rule data for row {i} in {rule_type.__name__} ({file_path}): {rule_data}")
             
             # Special handling for integer conversion if needed by Pydantic model
             for key, value in rule_data.items(): # Here, key is pydantic_field_name
@@ -358,9 +361,16 @@ def load_optimization_rules(file_path: str, rule_type: Type[Union[CoverageDaysRu
                         rule_data[key] = int(val_numeric)
                 else:
                     rule_data[key] = str(value) # Ensure all other values are strings
-            rules.append(rule_type(**rule_data))
+            
+            created_rule = rule_type(**rule_data)
+            rules.append(created_rule)
+            logger.debug(f"Created Pydantic object for row {i} in {rule_type.__name__} ({file_path}): {created_rule.model_dump_json(indent=2)}")
         except Exception as e:
             logger.error(f"Error processing row {i} in {rule_type.__name__} file {file_path}: {r.to_dict()}. Error: {e}. Skipping row.")
     
     logger.info(f"Loaded {len(rules)} {rule_type.__name__} rules from {file_path}.")
+    if rules: # Log a sample if not empty
+        logger.debug(f"Sample of loaded {rule_type.__name__} rules (first 5): {[r.model_dump_json() for r in rules[:5]]}")
+    else:
+        logger.debug(f"No {rule_type.__name__} rules were loaded from {file_path}.")
     return rules
