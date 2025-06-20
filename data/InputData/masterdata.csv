@@ -1,12 +1,216 @@
-product_gtin,internal_product_code,product_description,operational_division,operational_axe_label,operational_sub_axe_label,operational_metier_label,operational_signature_label
-00000030152540,AA533100,OA TELESCOPIC LIFT MASC BLACK SLVP,CPD,MakeUp,Eye Makeup,Mascara,L'Oreal Paris
-00000030161467,B3471100,FALSIES SURREAL NUslvp,CPD,MakeUp,Eye Makeup,Mascara,Maybelline
-00000030161467,B3471101,FALSIES SURREAL NUslvp,CPD,MakeUp,Eye Makeup,Mascara,Maybelline
-00800897085605,K2387704,EPIC INK LNR - BLACK,CPD,MakeUp,Eye Makeup,Eyeliner,NYX Professional Make-up
-00800897085605,K2387705,EPIC INK LNR - BLACK,CPD,MakeUp,Eye Makeup,Eyeliner,NYX Professional Make-up
-00800897123277,K4009608,CONCEALER WAND - PORCELAIN,CPD,MakeUp,Face Makeup,Concealer,NYX Professional Make-up
-00800897182618,K3445200,FILLER INSTINCT PLMP LP PLSH-LTS GL,CPD,MakeUp,Lip Makeup,Gloss,NYX Professional Make-up
-00800897192303,K3611200,SWEET CHEEKS BLUSH (MATTE)-SMMR BRZ,CPD,MakeUp,Face Makeup,Blush,NYX Professional Make-up
-00800897225254,K5230200,THIS IS MILKY GLOSS COQUITO SHAKE,CPD,MakeUp,Lip Makeup,Gloss,NYX Professional Make-up
-03600530847914,B2118802,MAS VEX ROCKET BLG-RF 1 VERY BLACK,CPD,MakeUp,Eye Makeup,Mascara,Maybelline
-03600531089795,B2458803,MAS COL.GO EXTR.BLg-RF 4 radical bl,CPD,MakeUp,Eye Makeup,Mascara,Maybelline
+product_gtin;internal_product_code;product_description;operational_division;operational_axe_label;operational_sub_axe_label;operational_metier_label;operational_signature_label;operational_brand_label;operational_subbrand_label;product_category_description
+3054080063780;A1796705;DE DEMAQ BIPHASE FL125 FRi .;CPD;Skin Care;Face Cleansing;Eye Cleansing Products;L'Oreal Paris;L'Oreal Skincare;L'Oreal Skin Other Sub-Brds;Finished Product
+3054080063780;A1796713;DE DEMAQ BIPHASE FL125 FRi .;CPD;Skin Care;Face Cleansing;Eye Cleansing Products;L'Oreal Paris;L'Oreal Skincare;L'Oreal Skin Other Sub-Brds;Finished Product
+3054080063780;A1796714;DE DEMAQ BIPHASE FL125 FRi .;CPD;Skin Care;Face Cleansing;Eye Cleansing Products;L'Oreal Paris;L'Oreal Skincare;L'Oreal Skin Other Sub-Brds;Finished Product
+3054080063780;A1796715;DE DEMAQ BIPHASE FL125 FRi .;CPD;Skin Care;Face Cleansing;Eye Cleansing Products;L'Oreal Paris;L'Oreal Skincare;L'Oreal Skin Other Sub-Brds;Finished Product
+3054080063780;A1796716;DE DEMAQ BIPHASE FL125 FRi .;CPD;Skin Care;Face Cleansing;Eye Cleansing Products;L'Oreal Paris;L'Oreal Skincare;L'Oreal Skin Other Sub-Brds;Finished Product
+3054080063780;A1826404;DE DEMAQ BIPHASE FL125 PL .;CPD;Skin Care;Face Cleansing;Eye Cleansing Products;L'Oreal Paris;L'Oreal Skincare;L'Oreal Skin Other Sub-Brds;Finished Product
+3054080063780;A5742714;DE DEMAQ BIPHASE FL125 FR .;CPD;Skin Care;Face Cleansing;Eye Cleansing Products;L'Oreal Paris;L'Oreal Skincare;L'Oreal Skin Other Sub-Brds;Finished Product
+3054080063780;A5742750;DE DEMAQ BIPHASE FL125 FR .;CPD;Skin Care;Face Cleansing;Eye Cleansing Products;L'Oreal Paris;L'Oreal Skincare;L'Oreal Skin Other Sub-Brds;Finished Product
+3054080063780;A5742751;DE DEMAQ BIPHASE FL125 FR .;CPD;Skin Care;Face Cleansing;Eye Cleansing Products;L'Oreal Paris;L'Oreal Skincare;L'Oreal Skin Other Sub-Brds;Finished Product
+3054080063780;A5742752;[ANNUL]DE DEMAQ BIPHASE FL125 FR .;CPD;Skin Care;Face Cleansing;Eye Cleansing Products;L'Oreal Paris;L'Oreal Skincare;L'Oreal Skin Other Sub-Brds;Finished Product
+3054080063780;A5742753;DE DEMAQ BIPHASE FL125 FR .;CPD;Skin Care;Face Cleansing;Eye Cleansing Products;L'Oreal Paris;L'Oreal Skincare;L'Oreal Skin Other Sub-Brds;Finished Product
+3054080063780;A5742754;DE DEMAQ BIPHASE FL125 FR .;CPD;Skin Care;Face Cleansing;Eye Cleansing Products;L'Oreal Paris;L'Oreal Skincare;L'Oreal Skin Other Sub-Brds;Finished Product
+3054080063780;A5742755;DE DEMAQ BIPHASE FL125 FR .;CPD;Skin Care;Face Cleansing;Eye Cleansing Products;L'Oreal Paris;L'Oreal Skincare;L'Oreal Skin Other Sub-Brds;Finished Product
+3054080063780;AA963200;OAP DEMAQ BIPHASE B125 FRI;CPD;Skin Care;Face Cleansing;Eye Cleansing Products;L'Oreal Paris;L'Oreal Skincare;L'Oreal Skin Other Sub-Brds;Finished Product
+3054080063780;AA963201;OAP DEMAQ BIPHASE B125 FRI;CPD;Skin Care;Face Cleansing;Eye Cleansing Products;L'Oreal Paris;L'Oreal Skincare;L'Oreal Skin Other Sub-Brds;Finished Product
+3054080063780;ZFR01438;DERMO DEMAQ125 YX/LEVRES WTP BR1E;CPD;Skin Care;Face Cleansing;Eye Cleansing Products;L'Oreal Paris;L'Oreal Skincare;L'Oreal Skin Other Sub-Brds;Price offer coupon
+3054080063780;ZFR04125;DERMO DEMAQ125 YX/LEV WTP+BR1OS1 14;CPD;Skin Care;Face Cleansing;Eye Cleansing Products;L'Oreal Paris;L'Oreal Skincare;L'Oreal Skin Other Sub-Brds;Price offer coupon
+3054080063780;ZFR11234;DERMO DEMAQ125 YX/LEVRES WTP;CPD;Skin Care;Face Cleansing;Eye Cleansing Products;L'Oreal Paris;L'Oreal Skincare;L'Oreal Skin Other Sub-Brds;Finished Product
+3054080063780;ZFR20039;DERMO DEMAQ125 YX/LEV WTP+BR2OS2-15;CPD;Skin Care;Face Cleansing;Eye Cleansing Products;L'Oreal Paris;L'Oreal Skincare;L'Oreal Skin Other Sub-Brds;Price offer coupon
+3054080063780;ZFR26045;DERMO DEMAQ125 YX/LEVRES WTP+BR1-15;CPD;Skin Care;Face Cleansing;Eye Cleansing Products;L'Oreal Paris;L'Oreal Skincare;L'Oreal Skin Other Sub-Brds;Price offer coupon
+3054080063780;ZFR26373;DERMO DEMAQ125 YX/LEVRES WTP +BR1;CPD;Skin Care;Face Cleansing;Eye Cleansing Products;L'Oreal Paris;L'Oreal Skincare;L'Oreal Skin Other Sub-Brds;Price offer coupon
+3600520756509;A2184225;ELS CV SHP300 FR .;CPD;Hair;Hair Care;Shampoo;L'Oreal Paris;Elseve Haircare;Elseve Colorvive/Vibrancy;Finished Product
+3600520756509;A2184227;ELS CV SHP300 FR .;CPD;Hair;Hair Care;Shampoo;L'Oreal Paris;Elseve Haircare;Elseve Colorvive/Vibrancy;Finished Product
+3600520756509;A2184228;ELS CV SHP300 FR .;CPD;Hair;Hair Care;Shampoo;L'Oreal Paris;Elseve Haircare;Elseve Colorvive/Vibrancy;Finished Product
+3600520756509;A2184229;ELS CV SHP B300 FR .;CPD;Hair;Hair Care;Shampoo;L'Oreal Paris;Elseve Haircare;Elseve Colorvive/Vibrancy;Finished Product
+3600520756509;A2184230;ELS CV SHP B300 FR .;CPD;Hair;Hair Care;Shampoo;L'Oreal Paris;Elseve Haircare;Elseve Colorvive/Vibrancy;Finished Product
+3600520756509;A2184231;ELS CV SHP B300 FRE;CPD;Hair;Hair Care;Shampoo;L'Oreal Paris;Elseve Haircare;Elseve Colorvive/Vibrancy;Finished Product
+3600522105992;A6150800;HE EVERSLEEK SH TU250 FR RESTOR;CPD;Hair;Hair Care;Shampoo;L'Oreal Paris;Ever Haircare;Ever Sleek;Finished Product
+3600522105992;A6150801;HE EVERSLEEK SH TU250 FR RESTOR;CPD;Hair;Hair Care;Shampoo;L'Oreal Paris;Ever Haircare;Ever Sleek;Finished Product
+3600522105992;A6832660;HE EVERSLEEK SH TU250 FRi RESTOR;CPD;Hair;Hair Care;Shampoo;L'Oreal Paris;Ever Haircare;Ever Sleek;Finished Product
+3600522105992;A6832661;HE EVERSLEEK SH TU250 FRi RESTOR;CPD;Hair;Hair Care;Shampoo;L'Oreal Paris;Ever Haircare;Ever Sleek;Finished Product
+3600522105992;A7480310;HE EVERSLEEK SH TU250 FR DISCIPLINE;CPD;Hair;Hair Care;Shampoo;L'Oreal Paris;Ever Haircare;Ever Sleek;Finished Product
+3600522105992;A7480311;SLEEK ULTIME SH TU250 FR LISS;CPD;Hair;Hair Care;Shampoo;L'Oreal Paris;Ever Haircare;Ever Sleek;Finished Product
+3600522105992;A7480312;SLEEK ULTIME SH TU250 FR LISS;CPD;Hair;Hair Care;Shampoo;L'Oreal Paris;Ever Haircare;Ever Sleek;Finished Product
+3600522105992;A7480313;SLEEK ULTIME SH TU250 FR LISS;CPD;Hair;Hair Care;Shampoo;L'Oreal Paris;Ever Haircare;Ever Sleek;Finished Product
+3600522105992;A7480314;ANNUL SLEEK ULTIME SH TU250 FR LISS;CPD;Hair;Hair Care;Shampoo;L'Oreal Paris;Ever Haircare;Ever Sleek;Finished Product
+3600522105992;A7480315;SLEEK ULTIME SH TU250 FR LISS;CPD;Hair;Hair Care;Shampoo;L'Oreal Paris;Ever Haircare;Ever Sleek;Finished Product
+3600522105992;ZFR01334;HE EVER LISS SH REPAIR BR1E;CPD;Hair;Hair Care;Shampoo;L'Oreal Paris;Ever Haircare;Ever Sleek;Price offer coupon
+3600523755721;A9892202;ELS CV ASH B240 FR .;CPD;Hair;Hair Care;Conditioner;L'Oreal Paris;Elseve Haircare;Elseve Colorvive/Vibrancy;Finished Product
+3600523755721;A9892203;ELS CV ASH B240 FR .;CPD;Hair;Hair Care;Conditioner;L'Oreal Paris;Elseve Haircare;Elseve Colorvive/Vibrancy;Finished Product
+3600523755721;A9892204;ELS CV ASH B240 FRE;CPD;Hair;Hair Care;Conditioner;L'Oreal Paris;Elseve Haircare;Elseve Colorvive/Vibrancy;Finished Product
+3600523755721;AA517000;ELS CV ASH B240 FRi;CPD;Hair;Hair Care;Conditioner;L'Oreal Paris;Elseve Haircare;Elseve Colorvive/Vibrancy;Finished Product
+3600523755721;ZFR36703;ELS COLORVIVE ASH 240 FR -RP;CPD;Hair;Hair Care;Conditioner;L'Oreal Paris;Elseve Haircare;Elseve Colorvive/Vibrancy;Finished Product
+3600523755721;ZFR36801;ELS COLORVIVE ASH 240 FR -G4;CPD;Hair;Hair Care;Conditioner;L'Oreal Paris;Elseve Haircare;Elseve Colorvive/Vibrancy;Finished Product
+3600524098568;AA638200;ELS DREAM LENGTH SHP300 FRE;CPD;Hair;Hair Care;Shampoo;L'Oreal Paris;Elseve Haircare;Elseve Dream Length;Finished Product
+3600524098568;AA644000;ELS DREAM LENGTH SHP300 FREi;CPD;Hair;Hair Care;Shampoo;L'Oreal Paris;Elseve Haircare;Elseve Dream Length;Finished Product
+3600524098681;AA639400;ELS ANTICASSE ASH300 FRE;CPD;Hair;Hair Care;Conditioner;L'Oreal Paris;Elseve Haircare;Elseve Anti-Casse;Finished Product
+3600524098681;AA644500;ELS ANTICASSE ASH300 FREi;CPD;Hair;Hair Care;Conditioner;L'Oreal Paris;Elseve Haircare;Elseve Anti-Casse;Finished Product
+3600524098698;AA639500;ELS CV ASH300 FRE;CPD;Hair;Hair Care;Conditioner;L'Oreal Paris;Elseve Haircare;Elseve Colorvive/Vibrancy;Finished Product
+3600524098698;AA644400;ELS CV ASH300 FREi;CPD;Hair;Hair Care;Conditioner;L'Oreal Paris;Elseve Haircare;Elseve Colorvive/Vibrancy;Finished Product
+3600524102982;AA654800;ELS NTG LUMI SHP300 FRE;CPD;Hair;Hair Care;Shampoo;L'Oreal Paris;Elseve Haircare;Elseve Nutri Gloss;Finished Product
+3600524143619;AA831200;ELS DREAM LENGTH ASH B400 FRE;CPD;Hair;Hair Care;Conditioner;L'Oreal Paris;Elseve Haircare;Elseve Dream Length;Finished Product
+3600524143619;AB004000;ELS DL R24 ASH B400 FRi;CPD;Hair;Hair Care;Conditioner;L'Oreal Paris;Elseve Haircare;Elseve Dream Length;Finished Product
+3600541426078;C5341800;AS BB SHADE TU50 FR IP50+;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Sensitive Kids;Finished Product
+3600541426078;C5341801;AS BB SHADE TU50 FR IP50+;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Sensitive Kids;Finished Product
+3600541426078;C5341802;AS BB SHADE TU50 FR IP50+;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Sensitive Kids;Finished Product
+3600541426078;C5341815;AS BB SHADE TU50 FR IP50+;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Sensitive Kids;Finished Product
+3600541426078;C5341816;AS BB SHADE TU50 FR IP50+;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Sensitive Kids;Finished Product
+3600541426078;C5341855;AS BB SHADE TU50 FR IP50+;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Sensitive Kids;Finished Product
+3600541426078;C5341856;AS BB SHADE TU50 FR IP50+;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Sensitive Kids;Finished Product
+3600541426078;C5341857;AS BB SHADE TU50 FR IP50+;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Sensitive Kids;Finished Product
+3600541426078;C5341858;AS BABY SHADE TU50 FR IP50+;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Sensitive Kids;Finished Product
+3600541426078;C5341859;AS BABY SHADE TU50 FR IP50+;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Sensitive Kids;Finished Product
+3600541426078;C5341860;AS SA BABY SPF50 T50ML FR;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Sensitive Kids;Finished Product
+3600541426078;XFR08885;AS LAIT BB OMB TU50 IP50+BR0.75E 14;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Sensitive Kids;Price offer coupon
+3600541426078;XFR10861;AS PAV 12 LT BB OMB;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Sensitive Kids;Finished Product
+3600541426078;XFR10862;ANNUL AS PAV LT BB OMB +BR0.75E 14;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Sensitive Kids;POS Display (with FP)
+3600541426078;XFR15136;AS LAIT BB OMB TU50 IP50+BR0.75E-15;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Sensitive Kids;Price offer coupon
+3600541426078;XFR15228;TRI BON AS LT BEBE OMBRE TU50 IP50+;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Invisible Protect;Finished Product
+3600541426078;XFR15229;TRI MIN AS LAIT BEBE OMBRE TU50 IP5;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Invisible Protect;Finished Product
+3600541426078;XFR22893;TRI MAJ AS LAIT BB OMBRE TU50 IP50+;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Invisible Protect;Finished Product
+3600541426078;XFR25334;TRI BON AS LT BEBE OMB T 50+ RESTIC;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Invisible Protect;Finished Product
+3600541426078;XFR25335;AS LAIT BEBE OMB. TU50 IP50+ RESTIC;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Sensitive Kids;Finished Product
+3600541426078;XFR25884;TRI MAJ AS LAIT BB OMB T50 IP50+ G4;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Sensitive Kids;Finished Product
+3600541426078;XFR26602;TRI BON AS LAIT BEBE OMBRE TU50;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Sensitive Kids;Finished Product
+3600542120487;C5986400;UDX RICHESSE ARGAN LEAVE FA200 FR;CPD;Hair;Hair Care;Leave-In Haircare;Garnier;Ultra Doux Haircare;Ultra Doux Argan/Almond;Finished Product
+3600542120487;C5986401;UDX RICHESSE ARGAN LEAVE FA200 FR;CPD;Hair;Hair Care;Leave-In Haircare;Garnier;Ultra Doux Haircare;Ultra Doux Argan/Almond;Finished Product
+3600542120487;C5986402;UDX RICHESSE ARGAN LEAVE FA200 FR;CPD;Hair;Hair Care;Leave-In Haircare;Garnier;Ultra Doux Haircare;Ultra Doux Argan/Almond;Finished Product
+3600542120487;C5986403;UDX RICHESSE ARGAN LEAVE FA200 FR;CPD;Hair;Hair Care;Leave-In Haircare;Garnier;Ultra Doux Haircare;Ultra Doux Argan/Almond;Finished Product
+3600542120487;C7066000;UDX RICHESSE ARGAN LEAVE FA200 FRi;CPD;Hair;Hair Care;Leave-In Haircare;Garnier;Ultra Doux Haircare;Ultra Doux Argan/Almond;Finished Product
+3600542120487;XFR23239;UD RICHESSE ARGAN+BR 0.5 OS3-18;CPD;Hair;Hair Care;Leave-In Haircare;Garnier;Ultra Doux Haircare;Ultra Doux Argan/Almond;Price offer coupon
+3600542298407;C6363200;AS SELF TAN FOAM PB200 FR/NL .;CPD;Skin Care;Sun Care;Selftanning;Garnier;Ambre Solaire;Ambre Solaire Natural Bronzer;Finished Product
+3600542298407;C6363201;AS SELF TAN FOAM PB200 FR/NL .;CPD;Skin Care;Sun Care;Selftanning;Garnier;Ambre Solaire;Ambre Solaire Natural Bronzer;Finished Product
+3600542298407;C6363202;AS SELF TAN FOAM PB200 FR-NL;CPD;Skin Care;Sun Care;Selftanning;Garnier;Ambre Solaire;Ambre Solaire Natural Bronzer;Finished Product
+3600542298407;C6363203;AS SELF TAN FOAM PB200 FR-NL;CPD;Skin Care;Sun Care;Selftanning;Garnier;Ambre Solaire;Ambre Solaire Natural Bronzer;Finished Product
+3600542298407;C6363204;AS NTB FOAM PB200ML 135;CPD;Skin Care;Sun Care;Selftanning;Garnier;Ambre Solaire;Ambre Solaire Natural Bronzer;Finished Product
+3600542298407;XBE09518;AS SELF TAN FOAM PB200 FR/NL .;CPD;Skin Care;Sun Care;Selftanning;Garnier;Ambre Solaire;Ambre Solaire Natural Bronzer;Finished Product
+3600542298407;XFR24657;TRI BON AS NAT.BRZ SELF MOUSSE TRAN;CPD;Skin Care;Sun Care;Selftanning;Garnier;Ambre Solaire;Ambre Solaire Natural Bronzer;Finished Product
+3600542298407;XFR24667;TRI MAJ AS NAT.BRZ SELF MOUSSE TRAN;CPD;Skin Care;Sun Care;Selftanning;Garnier;Ambre Solaire;Ambre Solaire Natural Bronzer;Finished Product
+3600542298407;XFR24677;TRI MIN AS NAT.BRZ SELF MOUSSE TRAN;CPD;Skin Care;Sun Care;Selftanning;Garnier;Ambre Solaire;Ambre Solaire Natural Bronzer;Finished Product
+3600542298407;XFR25898;TRI MAJ AS NAT.BRZ SELF MS TRAN G4;CPD;Skin Care;Sun Care;Selftanning;Garnier;Ambre Solaire;Ambre Solaire Natural Bronzer;Finished Product
+3600542298407;XFR26621;TRI BON AS NAT.BRZ SELF MOUSSE TRAN;CPD;Skin Care;Sun Care;Selftanning;Garnier;Ambre Solaire;Ambre Solaire Natural Bronzer;Finished Product
+3600542383523;C6482800;GAR.TISSUE MASK SA28GR ALOE 140;CPD;Skin Care;Face Care;Tissue Mask;Garnier;Garnier Skinactive Face;Garnier Tissue Mask;Finished Product
+3600542383523;C6482801;GAR.TISSUE MASK SA28GR ALOE 040;CPD;Skin Care;Face Care;Tissue Mask;Garnier;Garnier Skinactive Face;Garnier Tissue Mask;Finished Product
+3600542383523;C6482802;GAR.TISSUE MASK SA28GR ALOE 140;CPD;Skin Care;Face Care;Tissue Mask;Garnier;Garnier Skinactive Face;Garnier Tissue Mask;Finished Product
+3600542383523;C6482803;GAR.TISSUE MASK SA28GR ALOE 140;CPD;Skin Care;Face Care;Tissue Mask;Garnier;Garnier Skinactive Face;Garnier Tissue Mask;Finished Product
+3600542383523;XCH10388;DENNER_GAR TISSUE MASK ALOE 040;CPD;Skin Care;Face Care;Tissue Mask;Garnier;Garnier Skinactive Face;Garnier Tissue Mask;Finished Product
+3600542417846;C6584100;UDX ARGAN/CRANB ASH B250 FR;CPD;Hair;Hair Care;Conditioner;Garnier;Ultra Doux Haircare;Ultra Doux Argan/Cranberry;Finished Product
+3600542417846;C6584101;UDX ARGAN/CRANB ASH B250 FR;CPD;Hair;Hair Care;Conditioner;Garnier;Ultra Doux Haircare;Ultra Doux Argan/Cranberry;Finished Product
+3600542417846;C6584102;UDX ARGAN/CRANB ASH B250 FR;CPD;Hair;Hair Care;Conditioner;Garnier;Ultra Doux Haircare;Ultra Doux Argan/Cranberry;Finished Product
+3600542417846;XFR25148;ULTRA DOUX ASH250 ARGAN CRANBERRY;CPD;Hair;Hair Care;Conditioner;Garnier;Ultra Doux Haircare;Ultra Doux Argan/Cranberry;Finished Product
+3600542441643;C6644300;UD HONEY TRE NO RINSE COND T200 FR;CPD;Hair;Hair Care;Conditioner;Garnier;Ultra Doux Haircare;Ultra Doux Honey Treasures;Finished Product
+3600542441643;C6644301;UD HONEY TRE NO RINSE COND T200 FR;CPD;Hair;Hair Care;Conditioner;Garnier;Ultra Doux Haircare;Ultra Doux Honey Treasures;Finished Product
+3600542441643;C7065100;UD HONEY TRE NORINSE COND T200 FRi;CPD;Hair;Hair Care;Conditioner;Garnier;Ultra Doux Haircare;Ultra Doux Honey Treasures;Finished Product
+3600542444224;C6660700;AS KIDS CLASSIC SP150ML FR-BNL-CHA;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Classic Kid;Finished Product
+3600542444224;C6660701;AS KIDS CLASSIC SP150ML FR-NL;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Classic Kid;Finished Product
+3600542444224;C6660702;AS HYDRA KIDS SPF50 SP150ML 135;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Classic Kid;Finished Product
+3600542444224;XNL00496;AS KIDS CLASSIC SP150ML FR-BNL;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Classic Kid;Finished Product
+3600542444224;XNL00571;AS KIDS CLASSIC SP150ML NEMO;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Classic Kid;Finished Product
+3600542450645;C6684400;AS HUILE SELFTAN FL200 FR COCO;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Ideal Bronze/Oils;Finished Product
+3600542450645;C6684401;AS HUILE SELFTAN FL200 FR COCO;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Ideal Bronze/Oils;Finished Product
+3600542450645;C6684402;AS HUILE SELFTAN FL200 FR COCO;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Ideal Bronze/Oils;Finished Product
+3600542450645;C6684403;AS HUILE SELFTAN FL200 FR COCO;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Ideal Bronze/Oils;Finished Product
+3600542450645;C6684404;AS IDEAL BRONZE COCO OIL B200ML FR;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Ideal Bronze/Oils;Finished Product
+3600542450645;C6684405;AS IDEAL BRONZE COCO OIL B200ML FR;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Ideal Bronze/Oils;Finished Product
+3600542450645;XFR25385;AS HUILE SELFTAN FL200 FR COCO;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Ideal Bronze/Oils;Finished Product
+3600542450645;XFR25825;TRI BON AS HUILE200 AUTOBR COCO G4;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Ideal Bronze/Oils;Finished Product
+3600542450645;XFR25843;TRI MIN AS HUILE200 AUTOBR COCO G4;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Ideal Bronze/Oils;Finished Product
+3600542450645;XFR25861;TRI MAJ AS HUILE200 AUTBRZ COCO G4;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Ideal Bronze/Oils;Finished Product
+3600542450645;XFR26611;TRI BON AS HUILE SELFTAN FL200 FR C;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Ideal Bronze/Oils;Finished Product
+3600542453516;C6705400;AS IDEAL BRONZE OIL SPR150 IP15 FR;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Ideal Bronze/Oils;Finished Product
+3600542453516;C6705401;AS IDEAL BRONZE OIL SPR150 IP15 FR;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Ideal Bronze/Oils;Finished Product
+3600542453516;C6705402;AS IDEAL BRONZE OIL SPR150 IP15 FR;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Ideal Bronze/Oils;Finished Product
+3600542453516;C6705403;AS IDEAL BRONZE OIL SPR150 IP15 FR;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Ideal Bronze/Oils;Finished Product
+3600542453516;C6705404;AS IDEAL BRONZE OIL SPF15 SP150 FR;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Ideal Bronze/Oils;Finished Product
+3600542453516;XFR25829;TRI BON AS IDEAL BRZE OIL SPR150 G4;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Ideal Bronze/Oils;Finished Product
+3600542453516;XFR25847;TRI MIN AS IDEAL BRZE OIL SPR150 G4;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Ideal Bronze/Oils;Finished Product
+3600542453516;XFR25865;TRI MAJ AS IDEAL BRZE OIL SP150 G4;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Ideal Bronze/Oils;Finished Product
+3600542453516;XFR26180;AS ID BRZ OIL SPR150 IP15 -STICK;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Ideal Bronze/Oils;Finished Product
+3600542453516;XFR26612;TRI BON AS IDEAL BRONZE OIL SPR150;CPD;Skin Care;Sun Care;Body Protection;Garnier;Ambre Solaire;Ambre Solaire Ideal Bronze/Oils;Finished Product
+3600542453769;C6706100;AS NTB MIST AE150 INTENSE FR NL;CPD;Skin Care;Sun Care;Selftanning;Garnier;Ambre Solaire;Ambre Solaire Natural Bronzer;Finished Product
+3600542453769;C6706101;AS NTB MIST AE150 INTENSE FR-NL;CPD;Skin Care;Sun Care;Selftanning;Garnier;Ambre Solaire;Ambre Solaire Natural Bronzer;Finished Product
+3600542453769;C6706102;AS NTB MIST INTENSE AE150ML 135;CPD;Skin Care;Sun Care;Selftanning;Garnier;Ambre Solaire;Ambre Solaire Natural Bronzer;Finished Product
+3600542453769;XFR25831;TRI BON AS BRUME150 NO TRACE BR G4;CPD;Skin Care;Sun Care;Selftanning;Garnier;Ambre Solaire;Ambre Solaire Natural Bronzer;Finished Product
+3600542453769;XFR25849;TRI MIN AS BRUME150 NO TRACE BRZ G4;CPD;Skin Care;Sun Care;Selftanning;Garnier;Ambre Solaire;Ambre Solaire Natural Bronzer;Finished Product
+3600542453769;XFR25867;TRI MAJ AS BRUME150 NO TR BRZE G4;CPD;Skin Care;Sun Care;Selftanning;Garnier;Ambre Solaire;Ambre Solaire Natural Bronzer;Finished Product
+3600550041347;D0790100;JD FEM ASH 200 FR REVEIL COLOR;CPD;Hair;Hair Care;Conditioner;Autres Public;Dessange;JD Couleur & Keratine;Finished Product
+3600550041347;D0980400;J.D BAUME DEM. REVEIL COLOR FL200 .;CPD;Hair;Hair Care;Conditioner;Autres Public;Dessange;JD Couleur & Keratine;Finished Product
+3600550041347;D0980401;J.D BAUME DEM. REVEIL COLOR FL200 .;CPD;Hair;Hair Care;Conditioner;Autres Public;Dessange;JD Couleur & Keratine;Finished Product
+3600550041347;D0980403;JD BAUME DEM. REVEIL COLOR FL200 RE;CPD;Hair;Hair Care;Conditioner;Autres Public;Dessange;JD Couleur & Keratine;Finished Product
+3600550041347;D0980404;JD REVEIL COLOR ASH B200 FR REVEIL;CPD;Hair;Hair Care;Conditioner;Autres Public;Dessange;JD Couleur & Keratine;Finished Product
+3600550041347;D0980405;JD REVEIL COLOR ASH B200 FR REVEIL;CPD;Hair;Hair Care;Conditioner;Autres Public;Dessange;JD Couleur & Keratine;Finished Product
+3600550041347;D0980406;JD REVEIL COLOR ASH200 135;CPD;Hair;Hair Care;Conditioner;Autres Public;Dessange;JD Couleur & Keratine;Finished Product
+3600550041347;D0980407;JD REVEIL COLOR ASH200 135;CPD;Hair;Hair Care;Conditioner;Autres Public;Dessange;JD Couleur & Keratine;Finished Product
+3600550041347;D3390350;JD REVEIL COLOR ASH B200 FRi REVEIL;CPD;Hair;Hair Care;Conditioner;Autres Public;Dessange;JD Couleur & Keratine;Finished Product
+3600550041347;D3390351;JD REVEIL COLOR ASH B200 FRi REVEIL;CPD;Hair;Hair Care;Conditioner;Autres Public;Dessange;JD Couleur & Keratine;Finished Product
+3600550041347;D3390352;JD REVEIL COLOR ASH200 135i;CPD;Hair;Hair Care;Conditioner;Autres Public;Dessange;JD Couleur & Keratine;Finished Product
+3600550041347;D3390353;JD REVEIL COLOR ASH200 135i;CPD;Hair;Hair Care;Conditioner;Autres Public;Dessange;JD Couleur & Keratine;Finished Product
+3600550041347;ZRU10202;JD REVEIL COLOR ASH B200 3unit;CPD;Hair;Hair Care;Conditioner;Autres Public;Dessange;JD Couleur & Keratine;Pack (homogenous or heterogeneous)
+3600550041347;ZRU12211;REPACK JD BALM RC;CPD;Hair;Hair Care;Conditioner;Autres Public;Dessange;JD Couleur & Keratine;Competition
+3600550041347;ZRU12258;REPACK 200?? Reveil Color;CPD;Hair;Hair Care;Conditioner;Autres Public;Dessange;JD Couleur & Keratine;Competition
+3600550817584;D0790617;JD FEM SHP250 FR N.EXTREME;CPD;Hair;Hair Care;Shampoo;Autres Public;Dessange;Jd Nutri Extreme;Finished Product
+3600550817584;D0790619;JD FEM SHP250 FR N.EXTREME;CPD;Hair;Hair Care;Shampoo;Autres Public;Dessange;Jd Nutri Extreme;Finished Product
+3600550817584;D0790620;JD FEM SHP B250 FR N.EXTREME;CPD;Hair;Hair Care;Shampoo;Autres Public;Dessange;Jd Nutri Extreme;Finished Product
+3600550817584;D0790621;JD FEM SHP250 N.EXTREME 135;CPD;Hair;Hair Care;Shampoo;Autres Public;Dessange;Jd Nutri Extreme;Finished Product
+3600550817584;D0790622;JD FEM SHP250 N.EXTREME 135;CPD;Hair;Hair Care;Shampoo;Autres Public;Dessange;Jd Nutri Extreme;Finished Product
+3600550817584;D3388450;JD FEM SHP B250 FRi N.EXTREME;CPD;Hair;Hair Care;Shampoo;Autres Public;Dessange;Jd Nutri Extreme;Finished Product
+3600550817584;D3388451;JD FEM SH250 N.EXTREME 135i;CPD;Hair;Hair Care;Shampoo;Autres Public;Dessange;Jd Nutri Extreme;Finished Product
+3600550817584;D3388452;JD FEM SH250 N.EXTREME 135i;CPD;Hair;Hair Care;Shampoo;Autres Public;Dessange;Jd Nutri Extreme;Finished Product
+3600550817584;WFR21086;STICK DESS SH250 NUTRI EXTREME R16;CPD;Hair;Hair Care;Shampoo;Autres Public;Dessange;Jd Nutri Extreme;Finished Product
+3600550817584;ZRU10195;JD FEM SHP B250 FRi N.EXTREME_3un;CPD;Hair;Hair Care;Shampoo;Autres Public;Dessange;Jd Nutri Extreme;Pack (homogenous or heterogeneous)
+3600550817584;ZRU12212;REPACK JD SHM NE;CPD;Hair;Hair Care;Shampoo;Autres Public;Dessange;Jd Nutri Extreme;Competition
+3600551053677;D3742500;USH DCHE BAHIA ACAI F300 FR;CPD;Hygiene;Bath & Shower;Body Wash;Autres Public;Ushuaia;Ushuaia Rituel;Finished Product
+3600551053677;D3759500;USH DCHE BAHIA ACAI F300 FRi;CPD;Hygiene;Bath & Shower;Body Wash;Autres Public;Ushuaia;Ushuaia Rituel;Finished Product
+3600551053738;D3743100;USH DCHE CEDRE/TONIFIE F300 FR;CPD;Hygiene;Bath & Shower;Body Wash for Men;Autres Public;Ushuaia;Ushuaia Men;Finished Product
+3600551053738;D3758700;USH DCHE CEDRE/TONIFIE F300 FRi;CPD;Hygiene;Bath & Shower;Body Wash for Men;Autres Public;Ushuaia;Ushuaia Men;Finished Product
+3600551053745;D3743200;USH DCHE YLANG/RELAXE F300 FR;CPD;Hygiene;Bath & Shower;Body Wash;Autres Public;Ushuaia;Ushuaia Classique;Finished Product
+3600551053745;D3821400;USH DCHE YLANG RELAXE F300 FRi;CPD;Hygiene;Bath & Shower;Body Wash;Autres Public;Ushuaia;Ushuaia Classique;Finished Product
+3600551053752;D3743300;USH DCHE/SH MINERAUX MARINS F300 FR;CPD;Hygiene;Bath & Shower;Body Wash for Men;Autres Public;Ushuaia;Ushuaia Men;Finished Product
+3600551053752;D3759200;USH DCHE/SH MINERAUX MARINS F300FRi;CPD;Hygiene;Bath & Shower;Body Wash for Men;Autres Public;Ushuaia;Ushuaia Men;Finished Product
+3600551053769;D3743400;USH DCHE AGRUMES VERTS F300 FR;CPD;Hygiene;Bath & Shower;Body Wash for Men;Autres Public;Ushuaia;Ushuaia Men;Finished Product
+3600551053769;D3759600;USH DCHE AGRUMES VERTS F300 FRi;CPD;Hygiene;Bath & Shower;Body Wash for Men;Autres Public;Ushuaia;Ushuaia Men;Finished Product
+3600551053806;D3743800;USH DCHE HAMMAM SAVON NOIR F300 FR;CPD;Hygiene;Bath & Shower;Body Wash;Autres Public;Ushuaia;Ushuaia Rituel;Finished Product
+3600551053806;D3759100;USH DCHE HAMMAM SAVON NOIR F300 FRi;CPD;Hygiene;Bath & Shower;Body Wash;Autres Public;Ushuaia;Ushuaia Rituel;Finished Product
+3600551055015;D3753200;USH DCHE DOUCEUR SAKURA F300 FR;CPD;Hygiene;Bath & Shower;Body Wash;Autres Public;Ushuaia;Ushuaia Rituel;Finished Product
+3600551055015;D3759700;USH DCHE DOUCEUR SAKURA F300 FRi;CPD;Hygiene;Bath & Shower;Body Wash;Autres Public;Ushuaia;Ushuaia Rituel;Finished Product
+3600551067353;D3777200;MIXA PEAU SENS TUBE50ML SPF50 FR;CPD;Skin Care;Sun Care;Body Protection;Mixa;Mixa;Mixa Sun;Finished Product
+3600551067353;WFR27423;TRI BON MIXA SOL.T50 LT PEAU S G4;CPD;Skin Care;Sun Care;Body Protection;Mixa;Mixa;Mixa Sun;Finished Product
+3600551067353;WFR27428;TRI MIN MIXA SOL.T50 LT PS IP50 G4;CPD;Skin Care;Sun Care;Body Protection;Mixa;Mixa;Mixa Sun;Finished Product
+3600551067353;WFR27433;TRI MAJ MIXA SOL.T50 LT PS IP50 G4;CPD;Skin Care;Sun Care;Body Protection;Mixa;Mixa;Mixa Sun;Finished Product
+3600551067353;WFR28693;TRI BON MIXA SOL.T50 LT PEAU SENS;CPD;Skin Care;Sun Care;Body Protection;Mixa;Mixa;Mixa Sun;Finished Product
+3600551068459;D3782000;MIXA SUN  GEL APAISANT APS T200 FR;CPD;Skin Care;Sun Care;After-Sun;Mixa;Mixa;Mixa Sun;Finished Product
+3600551068459;D3782001;MIXA SUN GEL APAISANT APS T200 FR;CPD;Skin Care;Sun Care;After-Sun;Mixa;Mixa;Mixa Sun;Finished Product
+3600551068459;WFR27422;TRI BON MIXA SOL T200 GEL APAIS G4;CPD;Skin Care;Sun Care;After-Sun;Mixa;Mixa;Mixa Sun;Finished Product
+3600551068459;WFR27427;TRI MIN MIXA SOL T200 GEL APAIS G4;CPD;Skin Care;Sun Care;After-Sun;Mixa;Mixa;Mixa Sun;Finished Product
+3600551068459;WFR27432;TRI MAJ MIXA SOL T200 GEL APAIS G4;CPD;Skin Care;Sun Care;After-Sun;Mixa;Mixa;Mixa Sun;Finished Product
+3600551068459;WFR28691;TRI BON MIXA SOL T200 GEL APAISANT;CPD;Skin Care;Sun Care;After-Sun;Mixa;Mixa;Mixa Sun;Finished Product
+3600551069548;D3786200;USH DCHE HOMME EUCALYPTUS F300 FR;CPD;Hygiene;Bath & Shower;Body Wash for Men;Autres Public;Ushuaia;Ushuaia Men;Finished Product
+3600551069548;D3974800;USH DCHE HOMME EUCALYPTUS F300 FRI;CPD;Hygiene;Bath & Shower;Body Wash for Men;Autres Public;Ushuaia;Ushuaia Men;Finished Product
+3600551071183;D3789700;USH DCHE HAMMAM H.FL.ORANGER F250FR;CPD;Hygiene;Bath & Shower;Body Wash;Autres Public;Ushuaia;Ushuaia Rituel;Finished Product
+3600551071183;D3789701;USH DCHE HAMMAM H.FL.ORANGER F250FR;CPD;Hygiene;Bath & Shower;Body Wash;Autres Public;Ushuaia;Ushuaia Rituel;Finished Product
+3600551102993;D3811200;PTIT DOP SH FRAISE CERISE B400 FRE;CPD;Hair;Hair Care;Shampoo;Autres Public;DOP;P'tit Dop;Finished Product
+3600551102993;D3976000;PTIT DOP SH FRAISE CERISE B400 FRi;CPD;Hair;Hair Care;Shampoo;Autres Public;DOP;P'tit Dop;Finished Product
+3600551102993;WFR27338;PTIT DOP SH FRAISE CERISE B400FR RE;CPD;Hair;Hair Care;Shampoo;Autres Public;DOP;P'tit Dop;Finished Product
+3600551119854;D3844700;JD BRUSHING ABSOLU SH250ML 135;CPD;Hair;Hair Care;Shampoo;Autres Public;Dessange;JD Hydra Brush;Finished Product
+3600551119854;D3888000;JD BRUSHING ABSOLU SH250ML 135i;CPD;Hair;Hair Care;Shampoo;Autres Public;Dessange;JD Hydra Brush;Finished Product
+3600551119854;D3993400;JD BRUSHING ABSOLU SH250ML 135i;CPD;Hair;Hair Care;Shampoo;Autres Public;Dessange;JD Hydra Brush;Finished Product
+3600551125336;D3852800;MIXA DERMO PEAUX SENS. SPF30 T175;CPD;Skin Care;Sun Care;Body Protection;Mixa;Mixa;Mixa Sun;Finished Product
+3600551125336;D4006600;MIXA DERM PEAUX SENS SPF30 T175 FRi;CPD;Skin Care;Sun Care;Body Protection;Mixa;Mixa;Mixa Sun;Finished Product
+3600551125336;WFR28141;TRI BON MIXA DER PX S. PF30 T175 G4;CPD;Skin Care;Sun Care;Body Protection;Mixa;Mixa;Mixa Sun;Finished Product
+3600551125336;WFR28147;TRI MIN MIXA D PX S. SPF30 T175 G4;CPD;Skin Care;Sun Care;Body Protection;Mixa;Mixa;Mixa Sun;Finished Product
+3600551125336;WFR28154;TRI MAJ MIXA DER PX S. 30 T175 G4;CPD;Skin Care;Sun Care;Body Protection;Mixa;Mixa;Mixa Sun;Finished Product
+3600551125336;WFR28694;TRI BON MIXA DERMO PEAUX SENS SPF30;CPD;Skin Care;Sun Care;Body Protection;Mixa;Mixa;Mixa Sun;Finished Product
+3600551142128;D3898400;DOP SH AMANDE DOUCE 2EN1 B400 FRE;CPD;Hair;Hair Care;Shampoo;Autres Public;DOP;Dop;Finished Product
+3600551142128;D3901400;DOP SH AMANDE DOUCE 2EN1 B400 FREi;CPD;Hair;Hair Care;Shampoo;Autres Public;DOP;Dop;Finished Product
+3600551142197;D3899100;DOP SHAMPOING ANTI PEL B400 FRE;CPD;Hair;Hair Care;Shampoo;Autres Public;DOP;Dop;Finished Product
+3600551142197;D3901600;DOP SHAMPOING ANTI PEL B400 FREi;CPD;Hair;Hair Care;Shampoo;Autres Public;DOP;Dop;Finished Product
+3600551142210;D3899300;DOP SHAMPOING KARITE B400 FRE;CPD;Hair;Hair Care;Shampoo;Autres Public;DOP;Dop;Finished Product
+3600551142210;D3899301;DOP SHP KARITE B400 ML FRE;CPD;Hair;Hair Care;Shampoo;Autres Public;DOP;Dop;Finished Product
+3600551142210;D3901800;DOP SHAMPOING KARITE B400 FREi;CPD;Hair;Hair Care;Shampoo;Autres Public;DOP;Dop;Finished Product
+3600551142210;D3901801;DOP SHP KARITE B400 ML FREi;CPD;Hair;Hair Care;Shampoo;Autres Public;DOP;Dop;Finished Product
+3600551142227;D3899400;DOP SHAMPOING HUILE ARGAN B400 FRE;CPD;Hair;Hair Care;Shampoo;Autres Public;DOP;Dop;Finished Product
+3600551142227;D3899401;DOP SHP HUILE ARGAN B400 ML FRE;CPD;Hair;Hair Care;Shampoo;Autres Public;DOP;Dop;Finished Product
+3600551142227;D3901700;DOP SHAMPOING HUILE ARGAN B400 FREi;CPD;Hair;Hair Care;Shampoo;Autres Public;DOP;Dop;Finished Product
+3600551142227;D3901701;DOP SHP HUILE ARGAN B400 ML FREi;CPD;Hair;Hair Care;Shampoo;Autres Public;DOP;Dop;Finished Product
