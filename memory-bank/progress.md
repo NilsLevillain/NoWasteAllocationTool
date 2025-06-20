@@ -27,9 +27,6 @@
     - Implemented a `generateColorShades` helper in `frontend/app.js`.
             - Applied a yellow-to-green gradient for the "Stock at Risk by Division" and "Stock at Risk by Brand" pie charts.
             - Applied a distinct professional color palette for the "Stock of EANs Allocated to Channels (by Plant)" bar chart.
-- **Refined "NEW SKU" Definition (June 2025)**:
-    - Updated `backend/solver.py` (`calculate_abc_classification_and_new_skus`) to define "NEW" SKUs based on no sales AND no in-store stock. Products with no sales but with stock are now 'C'.
-    - Updated the call to this function in `backend/solver.py`'s `__main__` block and in `main.py`'s `/api/auto_allocate` endpoint to pass necessary in-store inventory data.
 - **EAN Allocation Deep Dive Feature (Initial Implementation - June 2025)**:
     - **Backend**: Created `/api/ean_deep_dive_data` in `main.py` to serve detailed EAN data (product info, stock, channel performance, ABC, rules, final allocations). Ensured correct route registration.
     - **Frontend**: Developed `frontend/ean_deep_dive.html` and `frontend/ean_deep_dive.js` for displaying this data. Corrected JavaScript error handling for missing data properties and updated API fetch call to use an absolute URL.
@@ -60,6 +57,15 @@
     - Modified `main.py` (`/api/allocation_data` endpoint) so that the `units` field sent to the frontend is now `min(StockToAllocate, AvailableStock)`. This aligns the displayed 'Units' with the actual quantity considered by the solver's supply constraints.
     - Updated the data filtering logic in `/api/allocation_data` to `if item_data['units'] > 0:` since `item_data['units']` now correctly reflects the allocatable quantity.
     - Corrected syntax errors (missing comma) in `main.py` that arose during previous modifications.
+- **Manual Allocation Saving**: The `saveAllocation` function in `frontend/app.js` now successfully sends EAN-Plant specific data to the `/api/save_allocations` endpoint, allowing users to persist manual adjustments.
+- **Dynamic Allocation Percentage and Remaining Quantity**: The `handleAllocationChange` function in `frontend/app.js` dynamically calculates and updates the "Allocation %" and "Remaining Qty" cells in real-time as users modify allocation inputs, providing immediate feedback.
+
+## Remaining Work
+- Continue refinement of the optimization engine constraints and objective function as outlined in `activeContext.md`.
+- Further development and enhancement of the User Interface components.
+- Deepen the understanding of allocation logic and its impact on solutions. 
+- Implementation of new features: seeing the allocation over different period of time, validating the allocation.
+- Modify the default parameters like seasonality_coefficient and modify the UI for it (the parameter should be selectable by end users before auto-allocating), modify the COGs with real data, and all other default "to come" data as well that will come in InputData folder.
 
 ## Remaining Work
 - Continue refinement of the optimization engine constraints and objective function as outlined in `activeContext.md`.

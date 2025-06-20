@@ -125,7 +125,6 @@ The model requires several data inputs:
 1.  Product master data (EAN, brand, division, axe, metier, subaxis, etc.)
 2.  Channel data (channel ID, type)
 3.  **Inventory data (EAN-Plant specific)**: `product_ean`, `plant` (plant code), `quantity` (StockToAllocate at plant), `available_stock` (AvailableStock at plant).
-    -   **Note on Frontend Display**: The 'Units' column displayed in the frontend for each EAN-Plant combination now represents `min(StockToAllocate, AvailableStock)` from the inventory data, aligning with the quantity considered by the solver's supply constraint for that EAN-Plant.
 4.  Existing stock data (in-store and in-transit, typically at EAN-Channel level).
 5.  Demand data (weekly sales quantities, typically at EAN-Channel level).
 6.  Various rules defined in Excel files (coverage days, outlet capacity, assortment, push new SKU).

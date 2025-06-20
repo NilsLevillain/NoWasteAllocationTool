@@ -87,7 +87,18 @@ The system implements the Observer pattern to notify various components when opt
         - All rule Excel files via `load_optimization_rules`.
         - Final allocations from the `Allocation` database table (which includes `plant_code`).
     - It calls `calculate_abc_classification_and_new_skus` (which now uses `ABC_ranking.csv` and `in_store_inventory.csv`) to determine the ABC/NEW status for the EAN across channels.
-    - The collected and processed data is returned as a structured JSON to the `frontend/ean_deep_dive.html` page.
+        - The collected and processed data is returned as a structured JSON to the `frontend/ean_deep_dive.html` page.
+
+-   **ABC Classification Logic**:
+    -   The `calculate_abc_classification_and_new_skus` function in `backend/solver.py` determines the ABC class ('A', 'B', 'C', or 'NEW') for each EAN-Channel pair.
+    -   **Primary Source**: `data/InputData/ABC_ranking.csv` is the main source for pre-calculated ABC classes.
+    -   **"NEW" SKU Logic**: An EAN-Channel is 'NEW' if it's not in `ABC_ranking.csv` AND has no existing in-store stock (from `data/InputData/in_store_inventory.csv`).
+    -   **Default 'C' Classification**: If an EAN-Channel is not in `ABC_ranking.csv` BUT has existing in-store stock, it defaults to 'C'.
+    -   This classification directly impacts the application of coverage days and new SKU push constraints in the solver.
+
+-   **Frontend 'Units' Display Alignment**:
+    -   The 'Units' column displayed in the frontend for each EAN-Plant combination (via `/api/allocation_data`) now represents `min(StockToAllocate, AvailableStock)` from the inventory data.
+    -   This ensures the displayed quantity aligns with the actual quantity considered by the solver's supply constraint for that EAN-Plant.
 
 ## Error Handling Patterns
 - Input validation errors are caught early and presented to users for correction

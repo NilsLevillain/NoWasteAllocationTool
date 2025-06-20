@@ -13,11 +13,11 @@
       
 ### Frontend
       - **HTML5/CSS3**: Markup and styling
-      - **JavaScript (ES6+)**: Client-side scripting
-      - **Chart.js**: Data visualization library
+      - **JavaScript (ES6+)**: Client-side scripting (ES6+)
+      - **Highcharts**: Data visualization library
       - **Bootstrap 5**: UI framework
-      - **jQuery**: DOM manipulation (minimized usage)
-      - **DataTables**: Enhanced table displays
+      - **jQuery**: DOM manipulation (minimized usage, primarily for Bootstrap/Highcharts if applicable)
+      - **No dedicated table library**: Custom table rendering
       
 ## Development Environment
       - **Version Control**: Git with GitHub
@@ -25,7 +25,7 @@
       - **Containerization**: Docker
       - **IDE**: VS Code with Python and Flask extensions
       - **Testing**: unittest (for backend utilities), pytest, Jest
-      - **Code Quality**: flake8, ESLint, Black
+      - **Code Quality**: flake8, ESLint, Black (for Python), Prettier (for Frontend)
       
 ## Technical Constraints
       1. **Performance Requirements**:
@@ -42,9 +42,9 @@
          - Excel exports must be compatible with Excel 2019+
          - Must integrate with SAP via standardized file formats
       
-## Dependencies and Configurations
+## Dependencies and Configuration
       - **Configuration Management**: Environment variables with python-dotenv
-      - **Package Management**: Poetry for dependency management
+      - **Package Management**: pip/pip-tools (via requirements.txt)
       - **Deployment**: GCP via docker
       - **Monitoring**: Prometheus and Grafana
       - **Logging**: GCP services
