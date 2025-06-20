@@ -56,6 +56,10 @@
     - **Solver (`backend/solver.py`):** The `calculate_abc_classification_and_new_skus` function was successfully refactored to derive ABC classes from `data/InputData/ABC_ranking.csv`. The logic for "NEW" SKUs (not in file and no stock) and default 'C' classification (not in file but has stock) was implemented. The function signature was updated, and logging was adapted.
     - **API Logic (`main.py`):** Calls to `calculate_abc_classification_and_new_skus` in the `/api/auto_allocate` and `/api/ean_deep_dive_data` endpoints were updated to use the new function signature, including passing the path to `ABC_ranking.csv`.
     - **Unit Tests (`tests/test_solver.py`):** Comprehensive unit tests were added for the refactored `calculate_abc_classification_and_new_skus` function, covering various scenarios including file-based lookup, NEW SKU logic, default 'C' logic, empty/missing ranking file, and handling of non-standard ABC classes. Mocking is used for CSV file reading. Old sellout-based ABC tests were removed.
+- **Aligned Frontend 'Units' with Solver Logic (June 2025)**:
+    - Modified `main.py` (`/api/allocation_data` endpoint) so that the `units` field sent to the frontend is now `min(StockToAllocate, AvailableStock)`. This aligns the displayed 'Units' with the actual quantity considered by the solver's supply constraints.
+    - Updated the data filtering logic in `/api/allocation_data` to `if item_data['units'] > 0:` since `item_data['units']` now correctly reflects the allocatable quantity.
+    - Corrected syntax errors (missing comma) in `main.py` that arose during previous modifications.
 
 ## Remaining Work
 - Continue refinement of the optimization engine constraints and objective function as outlined in `activeContext.md`.
@@ -69,7 +73,7 @@
 - Data ingestion and preprocessing layer is now stable and well-tested.
 - Core optimization logic is integrated with the new data loading utilities.
 - `/api/auto_allocate` endpoint correctly saves allocations to the database. The ABC classification logic used by this endpoint and `/api/ean_deep_dive_data` now sources from `ABC_ranking.csv`, and the "NEW SKU" definition is updated accordingly.
-- The `/api/allocation_data` endpoint is now functional again, serving allocation data sourced from the database.
+- The `/api/allocation_data` endpoint is now functional again, serving allocation data sourced from the database. The 'Units' displayed in the frontend now correctly represent `min(StockToAllocate, AvailableStock)`, aligning with solver logic.
 - Client-side handling of the auto-allocation process in `frontend/app.js` is more robust.
 - The "EAN Allocation Deep Dive" feature is now functional, providing detailed EAN-specific data.
 - Frontend UI now correctly filters out non-allocatable stock, improving data presentation clarity.

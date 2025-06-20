@@ -247,7 +247,7 @@ def load_inventory_df(file_path: str, ean_col: str = 'ean_code', qty_col: str = 
         "Excess 6 months",
         "Excess 12 months"
     ]
-    result_df['bad_stock_type'] = np.select(conditions, choices, default="")
+    result_df['bad_stock_type'] = np.select(conditions, choices, default="Obsolete")
     
     logger.info(f"Loaded inventory for {len(result_df)} EAN-plant combinations from {file_path}. Total quantity: {result_df['quantity'].sum()}. 'bad_stock_type' column created.")
     return result_df

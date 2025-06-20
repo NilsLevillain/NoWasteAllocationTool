@@ -105,6 +105,10 @@
                 - Added comprehensive unit tests for the refactored `calculate_abc_classification_and_new_skus`.
                 - Tests cover scenarios like normal ABC lookup, missing products, NEW SKU identification, default 'C' for stocked unranked items, empty ranking file, and handling of non-standard ABC classes in the file.
                 - Mocking of `pd.read_csv` for `ABC_ranking.csv` and `in_store_inventory.csv` is used for deterministic testing.
+          - **Aligned Frontend 'Units' with Solver Logic (June 2025)**:
+            - Modified `main.py` (`/api/allocation_data` endpoint) so that the `units` field sent to the frontend is now `min(StockToAllocate, AvailableStock)`. This aligns the displayed 'Units' with the actual quantity considered by the solver's supply constraints.
+            - Updated the data filtering logic in `/api/allocation_data` to `if item_data['units'] > 0:` since `item_data['units']` now correctly reflects the allocatable quantity.
+            - Corrected syntax errors (missing comma) in `main.py` that arose during previous modifications.
                     
 ## Learnings from User Testing
           - Users prefer tabular views with sorting/filtering over purely graphical representations

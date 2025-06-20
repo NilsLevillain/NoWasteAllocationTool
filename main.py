@@ -471,7 +471,9 @@ def get_allocation_data():
                 'axe': row.get('axe', 'N/A'),
                 'subAxe': row.get('subAxe', 'N/A'), 'metier': row.get('metier', 'N/A'),
                 'ean': ean_val, 'sku': row.get('sku', 'N/A'),
-                'description': row.get('description', 'N/A'), 'units': row.get('quantity', 0),
+                'description': row.get('description', 'N/A'),
+                # Frontend 'units' now represents the minimum of StockToAllocate ('quantity') and AvailableStock
+                'units': min(row.get('quantity', 0), row.get('available_stock', 0)),
                 'available_stock': row.get('available_stock', 0), 
                 'stockOrigin': row.get('stockOrigin', 'N/A'), 
                 'bad_stock_type': row.get('bad_stock_type', ''), 
@@ -481,11 +483,11 @@ def get_allocation_data():
                 'cogs': row.get('cogs', 0.0) * row.get('quantity', 0)
             }
             
-            # Apply the filter: only show items where units > 0 AND available_stock > 0
-            if item_data['units'] > 0 and item_data['available_stock'] > 0:
+            # Apply the filter: only show items where units > 0
+            if item_data['units'] > 0:
                 frontend_data.append(item_data)
             else:
-                app.logger.debug(f"Skipping item {ean_val}_{plant_code_val} due to zero units ({item_data['units']}) or zero available_stock ({item_data['available_stock']}).")
+                app.logger.debug(f"Skipping item {ean_val}_{plant_code_val} due to zero units ({item_data['units']}).") # available_stock check is implicitly handled by units calculation
         
         app.logger.info(f"Prepared {len(frontend_data)} items for frontend display after filtering.")
         status_msg = "DB Allocations" if db_allocations else "No DB Allocations"
