@@ -8,6 +8,7 @@
              - **ABC Classification Source Update**: The `calculate_abc_classification_and_new_skus` function in `backend/solver.py` has been refactored. It now sources ABC classifications directly from `data/InputData/ABC_ranking.csv` instead of calculating them from sellout data.
              - **"NEW" SKU Logic Preservation**: The logic for identifying "NEW" SKUs (not 'A', 'B', or 'C' in `ABC_ranking.csv` AND no in-store stock for the EAN-Channel) has been maintained.
              - **Default Classification for Unranked Stocked Items**: EAN-Channel combinations not found in `ABC_ranking.csv` but having existing in-store stock are now classified as 'C'.
+	     - **Scoring System**: The allocation score is now calculated based on ABC classification, sellin ranking, and demand. The weights are currently hardcoded but will be moved to the `OptimizationParameters` schema in the future.
 
           2. **User Interface Enhancements**
              - Redesigning the results visualization dashboard

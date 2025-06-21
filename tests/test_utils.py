@@ -7,21 +7,20 @@ import sys
 import logging
 from io import StringIO
 
-# Add project root to sys.path to allow imports from backend
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-    from backend.utils import (
-        load_products_df,
-        load_channels_df,
-        load_inventory_df,
-        load_existing_stock_dict,
-        load_demand_dict,
-        load_optimization_rules,
-        load_sellin_ranking_dict, # New import
-        _get_channel_id_from_row
-    )
+from backend.utils import (
+    load_products_df,
+    load_channels_df,
+    load_inventory_df,
+    load_existing_stock_dict,
+    load_demand_dict,
+    load_optimization_rules,
+    load_sellin_ranking_dict, # New import
+    _get_channel_id_from_row
+)
 from backend.schemas import (
     CoverageDaysRule,
     OutletSKUCapacityRule,

@@ -158,6 +158,7 @@ def calculate_abc_classification_and_new_skus(
             channel_key = row['store_code'] # Already string
             abc_lookup_map[(ean_key, channel_key)] = row['abc_class'] # Already uppercase and validated A, B, C
         logger.debug(f"Created ABC lookup map with {len(abc_lookup_map)} entries from ABC_ranking.csv.")
+        logger.debug(f"ABC lookup map: {abc_lookup_map}")
 
     # 3. Iterate through all EANs (from product_master_df.index, which are already normalized by load_products_df) and all_channel_ids
     for product_ean_str in product_master_df.index: # Already normalized strings
@@ -168,7 +169,7 @@ def calculate_abc_classification_and_new_skus(
             if current_pair in abc_lookup_map:
                 abc_class = abc_lookup_map[current_pair] # Class is already validated A, B, or C
                 product_channel_abc_map[current_pair] = abc_class
-                #logger.debug(f"EAN {product_ean_str}, Channel {channel_id_str}: classified as '{abc_class}' from ABC_ranking.csv.")
+                logger.debug(f"EAN {product_ean_str}, Channel {channel_id_str}: classified as '{abc_class}' from ABC_ranking.csv.")
             else:
                 # Not found in ABC_ranking.csv. Check stock.
                 has_stock_in_channel = current_pair in stocked_product_channel_pairs
