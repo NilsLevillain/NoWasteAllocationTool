@@ -6,7 +6,6 @@ This document explains the linear programming model used in the inventory alloca
 The model maximizes the total weighted value of products allocated from all EAN-Plant combinations to all channels:
 
 **Maximize: ∑(p∈P, plant∈PL, c∈C) x[p, plant, c] × score[p, c]**
-
 Where:
 
 - `x[p, plant, c]` represents the quantity of product EAN `p` from plant `plant` allocated to channel `c`
@@ -15,29 +14,22 @@ Where:
 - `PL` is the set of all plants associated with a given EAN `p`
 - `C` is the set of all channels
 
-## Scoring System (Currently Hardcoded, Future: Parameterizable)
-The allocation score `score[p, c]` is calculated based on ABC classification:
+## Scoring System
+The allocation score `score[p, c]` is calculated based on a tiered system depending on the SKU's ABC classification for that channel. This system prioritizes higher-value products.
 
-- **A & B Class Products:**
-  - `score[p, c] = A_B_CLASS_SCORE` (currently: 2.0)
-- **NEW Class Products:**
-  - `score[p, c] = NEW_SKU_RANKING_WEIGHT × (DEFAULT_ALLOCATION_SCORE + (sellin_rank[p] / SELLIN_RANKING_MAX_VALUE))`
-  - `NEW_SKU_RANKING_WEIGHT` (currently: 1.0)
-  - `DEFAULT_ALLOCATION_SCORE` (currently: 1.0)
-  - `SELLIN_RANKING_MAX_VALUE` (currently: 100)
-- **C Class Products:**
-  - `score[p, c] = C_CLASS_DEMAND_WEIGHT × (DEFAULT_ALLOCATION_SCORE + (demand[p,c] × C_CLASS_DEMAND_SCALING_FACTOR))`
-  - `C_CLASS_DEMAND_WEIGHT` (currently: 0.5)
-  - `C_CLASS_DEMAND_SCALING_FACTOR` (currently: 0.001)
+- **Tier 1: Class A & B Products**
+  - `score[p, c] = 2.0`
+  - These products are given the highest priority in the allocation.
 
-### Future Parameter Configuration:
-All scoring weights will be moved to the `OptimizationParameters` schema:
-- `a_b_class_score`
-- `new_sku_ranking_weight`
-- `c_class_demand_weight`
-- `c_class_demand_scaling_factor`
-- `default_allocation_score`
-- `sellin_ranking_max_value`
+- **Tier 2: Class C Products**
+  - `score[p, c] = min(1.99, 1 + (sellin_rank[p] / 100.0))`
+  - The score is based on the product's sell-in ranking, capped at 1.99 to ensure it never exceeds the score of A/B products.
+
+- **Tier 3: NEW Products**
+  - `score[p, c] = 1 + 0.8 * (sellin_rank[p] / 100.0)`
+  - The score for new products is also based on their sell-in ranking, but with a slightly lower weight compared to C-class products to manage their introduction into channels.
+
+This structure ensures a clear hierarchy: A/B SKUs are always prioritized, followed by C SKUs, and then NEW SKUs, with sell-in ranking acting as a tie-breaker within the C and NEW tiers.
 
 ## Decision Variables
 The model uses three main types of decision variables:

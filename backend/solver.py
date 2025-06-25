@@ -229,34 +229,31 @@ def optimize_allocation(products_df: pd.DataFrame, channels_df: pd.DataFrame, in
     logger.debug(f"Products grouped by outlet capacity: {len(products_by_outlet_capacity_group)} groups.")
     logger.debug(f"Products grouped by outlet assortment: {len(products_by_outlet_assortment_group)} groups.")
 
-    logger.info("Calculating allocation scores for objective function.")
-    # Scoring Constants (can be moved to OptimizationParameters schema for user configurability if needed)
-    A_B_CLASS_SCORE = 2.0 # Higher score for A/B to maintain prioritization
-    DEFAULT_ALLOCATION_SCORE = 1.0 # Base score for C class and fallback
-    SELLIN_RANKING_MAX_VALUE = 100 # Max possible sellin ranking for normalization
-    C_CLASS_DEMAND_SCALING_FACTOR = 0.001 # Scales demand into a score contribution (tune this)
-    NEW_SKU_RANKING_WEIGHT = 1.0 # Weight for sellin ranking contribution for NEW SKUs
-    C_CLASS_DEMAND_WEIGHT = 0.5 # Weight for demand contribution for C SKUs
-
+    logger.info("Calculating allocation scores based on the new tiered system.")
     score_per_ean_channel = {}
+    # Define a default score for cases where logic might fail, though all paths should be covered.
+    DEFAULT_ALLOCATION_SCORE = 1.0 
+
     for p_ean in products:
         for c_channel in channels:
             abc_class = product_channel_abc_map.get((p_ean, c_channel), 'C') # Default to 'C' if not found
-            score = DEFAULT_ALLOCATION_SCORE
+            score = 0 # Initialize score
 
-            if abc_class == 'NEW':
-                sellin_rank = sellin_ranking_dict.get(p_ean, 0)
-                # Score for NEW SKUs: Base score + (normalized sellin rank * weight)
-                score = NEW_SKU_RANKING_WEIGHT * (DEFAULT_ALLOCATION_SCORE + (sellin_rank / SELLIN_RANKING_MAX_VALUE))
-                logger.debug(f"Score for NEW SKU EAN:{p_ean} C:{c_channel}: Sellin Rank={sellin_rank}, Score={score:.2f}")
+            if abc_class in ['A', 'B']:
+                score = 2.0
+                logger.debug(f"Score for {abc_class} Class EAN:{p_ean} C:{c_channel}: Score={score:.2f} (Tier 1)")
             elif abc_class == 'C':
-                demand = demand_dict.get((p_ean, c_channel), 0)
-                # Score for C Class SKUs: Base score + (scaled demand * weight)
-                score = C_CLASS_DEMAND_WEIGHT * (DEFAULT_ALLOCATION_SCORE + (demand * C_CLASS_DEMAND_SCALING_FACTOR))
-                logger.debug(f"Score for C Class EAN:{p_ean} C:{c_channel}: Demand={demand}, Score={score:.2f}")
-            elif abc_class in ['A', 'B']:
-                score = A_B_CLASS_SCORE
-                logger.debug(f"Score for {abc_class} Class EAN:{p_ean} C:{c_channel}: Score={score:.2f} (Prioritized)")
+                # Sellin rank is EAN-specific, not channel-specific
+                sellin_rank = sellin_ranking_dict.get(p_ean, 0)
+                # Formula: min(1.99, 1 + (sellin_ranking / 100))
+                score = min(1.99, 1 + (sellin_rank / 100.0))
+                logger.debug(f"Score for C Class EAN:{p_ean} C:{c_channel}: Sellin Rank={sellin_rank}, Score={score:.2f} (Tier 2)")
+            elif abc_class == 'NEW':
+                # Sellin rank is EAN-specific
+                sellin_rank = sellin_ranking_dict.get(p_ean, 0)
+                # Formula: 1 + 0.8 * (sellin_ranking / 100)
+                score = 1 + 0.8 * (sellin_rank / 100.0)
+                logger.debug(f"Score for NEW SKU EAN:{p_ean} C:{c_channel}: Sellin Rank={sellin_rank}, Score={score:.2f} (Tier 3)")
             else:
                 logger.warning(f"Unknown ABC class '{abc_class}' for EAN:{p_ean} C:{c_channel}. Using default score {DEFAULT_ALLOCATION_SCORE}.")
                 score = DEFAULT_ALLOCATION_SCORE
@@ -282,7 +279,7 @@ def optimize_allocation(products_df: pd.DataFrame, channels_df: pd.DataFrame, in
                                           cat='Binary')
 
     # Objective function: Maximize total allocation weighted by calculated scores
-    model += (pulp.lpSum(x[p, plant, c] * score_per_ean_channel.get((p, c), DEFAULT_ALLOCATION_SCORE) 
+    model += (pulp.lpSum(x[p, plant, c] * score_per_ean_channel[(p, c)]
                          for p, plant in ean_plant_pairs for c in channels), "Maximize_Weighted_Allocation")
     logger.debug("Objective function added: Maximize_Weighted_Allocation.")
 

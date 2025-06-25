@@ -36,6 +36,19 @@ def sample_products_df():
         'metier': ['Face', 'Face', 'Eyes', 'Face', 'Hair', 'Face']
     }, index=['1001', '1002', '1003', '1004', '1005', '1006'])
 
+# Add this fixture at the module level (with other fixtures)
+
+@pytest.fixture
+def competing_products_df():
+    """Create products that naturally compete in same outlet capacity groups"""
+    return pd.DataFrame({
+        'brand': ['Loreal', 'Loreal', 'Maybelline', 'Maybelline', 'Garnier', 'Garnier'],
+        'division': ['LuxDiv', 'LuxDiv', 'MassDiv', 'MassDiv', 'ActiveDiv', 'ActiveDiv'],
+        'axe': ['Skincare', 'Skincare', 'Makeup', 'Makeup', 'Skincare', 'Skincare'],  # Pairs compete!
+        'subaxis': ['Anti-Age', 'Moisturizer', 'Mascara', 'Foundation', 'Cleanser', 'Treatment'],
+        'metier': ['Face', 'Face', 'Eyes', 'Face', 'Face', 'Face']
+    }, index=['1001', '1002', '1003', '1004', '1005', '1006'])
+
 @pytest.fixture
 def sample_channels_df():
     """Create realistic channel data"""
@@ -304,54 +317,124 @@ class TestCoverageDaysConstraints:
         assert ean_1001_to_store01 <= 120
 
 # =============================================================================
-# CRITICAL TEST 4: Scoring System Validation
+# CRITICAL TEST 4: Tiered Scoring System Validation
 # =============================================================================
 
-class TestScoringSystem:
+class TestTieredScoringLogic:
 
-    def test_a_b_class_prioritization(self, sample_products_df, sample_channels_df, sample_demand_dict, sample_existing_stock_dict, sample_sellin_ranking_dict):
-        """Test that A/B class products get higher priority than C class"""
-        
+    def test_tier_1_A_class_always_wins(self, competing_products_df, sample_channels_df):
+        """Test that Tier 1 (A/B Class) beats even the best possible Tier 2 (C Class)"""
         inventory_df = pd.DataFrame({
-            'product_ean': ['1001', '1002'],
+            'product_ean': ['1001', '1002'], # Both LuxDiv-Skincare
             'plant': ['PLANT_FR', 'PLANT_FR'],
-            'quantity': [50, 50],
-            'available_stock': [50, 50]
+            'quantity': [50, 50], 'available_stock': [50, 50]
         })
-        
-        demand_dict = {
-            ('1001', 'STORE01'): 100,
-            ('1002', 'STORE01'): 100,
-        }
-        
-        abc_map = {
-            ('1001', 'STORE01'): 'A',
-            ('1002', 'STORE01'): 'C',
-        }
-        
+        abc_map = {('1001', 'OUTLET01'): 'A', ('1002', 'OUTLET01'): 'C'}
+        # Give C class the highest possible sellin rank to maximize its score
+        sellin_ranking_dict = {'1002': 100} 
         params = OptimizationParameters(
-            seasonality_coefficient=1.0,
-            restricted_brands_for_donation=[],
-            coverage_days_rules=[
-                CoverageDaysRule(channel_id='store', abc_class='A', coverage_days=20),
-                CoverageDaysRule(channel_id='store', abc_class='C', coverage_days=20),
-            ],
-            outlet_sku_capacity_rules=[],
-            outlet_assortment_rules=[],
-            push_new_sku_rules=[]
+            seasonality_coefficient=1.0, restricted_brands_for_donation=[],
+            coverage_days_rules=[], outlet_assortment_rules=[], push_new_sku_rules=[],
+            outlet_sku_capacity_rules=[
+                OutletSKUCapacityRule(channel_id='OUTLET01', division='LuxDiv', axe='Skincare', max_skus=1)
+            ]
         )
         
+        # Expected scores: A=2.0, C=min(1.99, 1 + 100/100) = 1.99. A should win.
         model, status, results = optimize_allocation(
-            sample_products_df, sample_channels_df, inventory_df,
-            demand_dict, params, {}, abc_map, sample_sellin_ranking_dict
+            competing_products_df, sample_channels_df, inventory_df, {}, params, {}, abc_map, sellin_ranking_dict
         )
         
         assert status == 'Optimal'
-        
-        a_class_allocation = sum(r['quantity'] for r in results if r['product_sku'] == '1001')
-        c_class_allocation = sum(r['quantity'] for r in results if r['product_sku'] == '1002')
-        
-        assert a_class_allocation >= c_class_allocation
+        allocated_skus = {r['product_sku'] for r in results if r['quantity'] > 0}
+        assert '1001' in allocated_skus
+        assert '1002' not in allocated_skus
+
+    def test_tier_2_C_class_score_calculation(self, competing_products_df, sample_channels_df):
+        """Test C Class score calculation: min(1.99, 1 + (sellin_rank / 100.0))"""
+        inventory_df = pd.DataFrame({
+            'product_ean': ['1003', '1004'], # Both MassDiv-Makeup
+            'plant': ['PLANT_FR', 'PLANT_FR'],
+            'quantity': [50, 50], 'available_stock': [50, 50]
+        })
+        abc_map = {('1003', 'OUTLET01'): 'C', ('1004', 'OUTLET01'): 'NEW'}
+        # Engineer sellin ranks so C class just barely wins
+        sellin_ranking_dict = {'1003': 88, '1004': 100}
+        params = OptimizationParameters(
+            seasonality_coefficient=1.0, restricted_brands_for_donation=[],
+            coverage_days_rules=[], outlet_assortment_rules=[],
+            outlet_sku_capacity_rules=[
+                OutletSKUCapacityRule(channel_id='OUTLET01', division='MassDiv', axe='Makeup', max_skus=1)
+            ],
+            push_new_sku_rules=[PushNewSKURule(division='MassDiv', subaxis='Foundation', push_quantity=50)]
+        )
+
+        # Expected scores: C = min(1.99, 1 + 88/100) = 1.88. NEW = 1 + 0.8 * (100/100) = 1.80. C should win.
+        model, status, results = optimize_allocation(
+            competing_products_df, sample_channels_df, inventory_df, {}, params, {}, abc_map, sellin_ranking_dict
+        )
+
+        assert status == 'Optimal'
+        allocated_skus = {r['product_sku'] for r in results if r['quantity'] > 0}
+        assert '1003' in allocated_skus
+        assert '1004' not in allocated_skus
+
+    def test_tier_2_C_class_score_capped_at_1_99(self, competing_products_df, sample_channels_df):
+        """Test that C Class score is capped at 1.99"""
+        inventory_df = pd.DataFrame({
+            'product_ean': ['1001', '1002'], # Both LuxDiv-Skincare
+            'plant': ['PLANT_FR', 'PLANT_FR'],
+            'quantity': [50, 50], 'available_stock': [50, 50]
+        })
+        abc_map = {('1001', 'OUTLET01'): 'C', ('1002', 'OUTLET01'): 'C'}
+        # Give 1001 a sellin rank that would result in score > 1.99 if not capped
+        sellin_ranking_dict = {'1001': 150, '1002': 98}
+        params = OptimizationParameters(
+            seasonality_coefficient=1.0, restricted_brands_for_donation=[],
+            coverage_days_rules=[], outlet_assortment_rules=[], push_new_sku_rules=[],
+            outlet_sku_capacity_rules=[
+                OutletSKUCapacityRule(channel_id='OUTLET01', division='LuxDiv', axe='Skincare', max_skus=1)
+            ]
+        )
+
+        # Expected scores: 1001 = min(1.99, 1 + 150/100) = 1.99. 1002 = min(1.99, 1 + 98/100) = 1.98. 1001 should win.
+        model, status, results = optimize_allocation(
+            competing_products_df, sample_channels_df, inventory_df, {}, params, {}, abc_map, sellin_ranking_dict
+        )
+
+        assert status == 'Optimal'
+        allocated_skus = {r['product_sku'] for r in results if r['quantity'] > 0}
+        assert '1001' in allocated_skus
+        assert '1002' not in allocated_skus
+
+    def test_tier_3_NEW_class_score_calculation(self, competing_products_df, sample_channels_df):
+        """Test NEW Class score calculation: 1 + 0.8 * (sellin_rank / 100.0)"""
+        inventory_df = pd.DataFrame({
+            'product_ean': ['1005', '1006'], # Both ActiveDiv-Skincare
+            'plant': ['PLANT_FR', 'PLANT_FR'],
+            'quantity': [50, 50], 'available_stock': [50, 50]
+        })
+        abc_map = {('1005', 'OUTLET01'): 'NEW', ('1006', 'OUTLET01'): 'C'}
+        # Engineer sellin ranks so NEW class just barely wins
+        sellin_ranking_dict = {'1005': 90, '1006': 70}
+        params = OptimizationParameters(
+            seasonality_coefficient=1.0, restricted_brands_for_donation=[],
+            coverage_days_rules=[], outlet_assortment_rules=[],
+            outlet_sku_capacity_rules=[
+                OutletSKUCapacityRule(channel_id='OUTLET01', division='ActiveDiv', axe='Skincare', max_skus=1)
+            ],
+            push_new_sku_rules=[PushNewSKURule(division='ActiveDiv', subaxis='Cleanser', push_quantity=50)]
+        )
+
+        # Expected scores: NEW = 1 + 0.8 * (90/100) = 1.72. C = min(1.99, 1 + 70/100) = 1.70. NEW should win.
+        model, status, results = optimize_allocation(
+            competing_products_df, sample_channels_df, inventory_df, {}, params, {}, abc_map, sellin_ranking_dict
+        )
+
+        assert status == 'Optimal'
+        allocated_skus = {r['product_sku'] for r in results if r['quantity'] > 0}
+        assert '1005' in allocated_skus
+        assert '1006' not in allocated_skus
 
 # =============================================================================
 # CRITICAL TEST 5: Restricted Brands
@@ -1087,6 +1170,121 @@ class TestResultValidation:
         for result in results:
             assert result['quantity'] >= 0
             assert result['quantity'] == int(result['quantity'])  # Should be integer
+
+
+
+
+# =============================================================================
+# CRITICAL TEST: Tiered Scoring Forced Choice Scenarios
+# =============================================================================
+
+class TestTieredForcedChoiceScoring:
+
+    def test_high_rank_C_beats_low_rank_NEW(self, competing_products_df, sample_channels_df):
+        """Test that a C-class SKU with high sellin rank beats a NEW SKU with low sellin rank."""
+        inventory_df = pd.DataFrame({
+            'product_ean': ['1001', '1002'], # LuxDiv-Skincare
+            'plant': ['PLANT_FR', 'PLANT_FR'],
+            'quantity': [50, 50], 'available_stock': [50, 50]
+        })
+        abc_map = {('1001', 'OUTLET01'): 'C', ('1002', 'OUTLET01'): 'NEW'}
+        sellin_ranking_dict = {'1001': 90, '1002': 10} # C has high rank, NEW has low rank
+        params = OptimizationParameters(
+            seasonality_coefficient=1.0, restricted_brands_for_donation=[],
+            coverage_days_rules=[], outlet_assortment_rules=[],
+            outlet_sku_capacity_rules=[
+                OutletSKUCapacityRule(channel_id='OUTLET01', division='LuxDiv', axe='Skincare', max_skus=1)
+            ],
+            push_new_sku_rules=[PushNewSKURule(division='LuxDiv', subaxis='Moisturizer', push_quantity=50)]
+        )
+
+        # Expected scores: C = 1.90, NEW = 1.08. C should win.
+        model, status, results = optimize_allocation(
+            competing_products_df, sample_channels_df, inventory_df, {}, params, {}, abc_map, sellin_ranking_dict
+        )
+        
+        assert status == 'Optimal'
+        allocated_skus = {r['product_sku'] for r in results if r['quantity'] > 0}
+        assert '1001' in allocated_skus
+        assert '1002' not in allocated_skus
+
+    def test_high_rank_NEW_beats_low_rank_C(self, competing_products_df, sample_channels_df):
+        """Test that a NEW SKU with high sellin rank beats a C-class SKU with low sellin rank."""
+        inventory_df = pd.DataFrame({
+            'product_ean': ['1003', '1004'], # MassDiv-Makeup
+            'plant': ['PLANT_FR', 'PLANT_FR'],
+            'quantity': [50, 50], 'available_stock': [50, 50]
+        })
+        abc_map = {('1003', 'OUTLET01'): 'NEW', ('1004', 'OUTLET01'): 'C'}
+        sellin_ranking_dict = {'1003': 95, '1004': 20} # NEW has high rank, C has low rank
+        params = OptimizationParameters(
+            seasonality_coefficient=1.0, restricted_brands_for_donation=[],
+            coverage_days_rules=[], outlet_assortment_rules=[],
+            outlet_sku_capacity_rules=[
+                OutletSKUCapacityRule(channel_id='OUTLET01', division='MassDiv', axe='Makeup', max_skus=1)
+            ],
+            push_new_sku_rules=[PushNewSKURule(division='MassDiv', subaxis='Mascara', push_quantity=50)]
+        )
+
+        # Expected scores: NEW = 1.76, C = 1.20. NEW should win.
+        model, status, results = optimize_allocation(
+            competing_products_df, sample_channels_df, inventory_df, {}, params, {}, abc_map, sellin_ranking_dict
+        )
+        
+        assert status == 'Optimal'
+        allocated_skus = {r['product_sku'] for r in results if r['quantity'] > 0}
+        assert '1003' in allocated_skus
+        assert '1004' not in allocated_skus
+
+    def test_portfolio_optimization_with_tiered_scoring(self, competing_products_df, sample_channels_df):
+        """Test a mix of A, C, and NEW SKUs competing for limited slots."""
+        inventory_df = pd.DataFrame({
+            'product_ean': ['1001', '1002', '1003', '1004', '1005', '1006'],
+            'plant': ['PLANT_FR'] * 6,
+            'quantity': [50] * 6, 'available_stock': [50] * 6
+        })
+        abc_map = {
+            ('1001', 'OUTLET01'): 'A',       # LuxDiv-Skincare
+            ('1002', 'OUTLET01'): 'C',       # LuxDiv-Skincare
+            ('1003', 'OUTLET01'): 'NEW',     # MassDiv-Makeup
+            ('1004', 'OUTLET01'): 'C',       # MassDiv-Makeup
+            ('1005', 'OUTLET01'): 'C',       # ActiveDiv-Skincare
+            ('1006', 'OUTLET01'): 'NEW',     # ActiveDiv-Skincare
+        }
+        sellin_ranking_dict = {
+            '1002': 95, # High rank C
+            '1003': 90, # High rank NEW
+            '1004': 10, # Low rank C
+            '1005': 80, # High rank C
+            '1006': 85, # High rank NEW
+        }
+        params = OptimizationParameters(
+            seasonality_coefficient=1.0, restricted_brands_for_donation=[],
+            coverage_days_rules=[], outlet_assortment_rules=[],
+            outlet_sku_capacity_rules=[
+                OutletSKUCapacityRule(channel_id='OUTLET01', division='LuxDiv', axe='Skincare', max_skus=1),
+                OutletSKUCapacityRule(channel_id='OUTLET01', division='MassDiv', axe='Makeup', max_skus=1),
+                OutletSKUCapacityRule(channel_id='OUTLET01', division='ActiveDiv', axe='Skincare', max_skus=1),
+            ],
+            push_new_sku_rules=[
+                PushNewSKURule(division='MassDiv', subaxis='Mascara', push_quantity=50),
+                PushNewSKURule(division='ActiveDiv', subaxis='Treatment', push_quantity=50)
+            ]
+        )
+
+        # Expected Scores & Winners:
+        # Group 1 (LuxDiv-Skincare): 1001(A, 2.0) vs 1002(C, 1.95) -> 1001 wins
+        # Group 2 (MassDiv-Makeup): 1003(NEW, 1.72) vs 1004(C, 1.10) -> 1003 wins
+        # Group 3 (ActiveDiv-Skincare): 1005(C, 1.80) vs 1006(NEW, 1.68) -> 1005 wins
+        model, status, results = optimize_allocation(
+            competing_products_df, sample_channels_df, inventory_df, {}, params, {}, abc_map, sellin_ranking_dict
+        )
+
+        assert status == 'Optimal'
+        allocated_skus = {r['product_sku'] for r in results if r['quantity'] > 0}
+        
+        expected_winners = {'1001', '1003', '1005'}
+        assert allocated_skus == expected_winners
 
 
 if __name__ == '__main__':
