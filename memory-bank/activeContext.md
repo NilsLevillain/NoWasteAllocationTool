@@ -13,6 +13,8 @@
           - **Tier 2:** Class C SKUs (`score = min(1.99, 1 + (sellin_ranking / 100.0))`).
           - **Tier 3:** NEW SKUs (`score = 1 + 0.8 * (sellin_ranking / 100.0))`).
           - This ensures A & B SKUs are always prioritized, while C and NEW SKUs are differentiated based on their sellin potential.
+	 - **Lexicographical Objective**: The objective function now uses a lexicographical approach, prioritizing SKU selection based on score before maximizing quantity. A large weighting factor is applied to the score of the selected SKU, and a smaller factor to the allocated quantity.
+	 - **"Big M" Constraint Formulation**: The `PushNewSKURule` and `CoverageDaysRule` constraints now use a "Big M" formulation to ensure that quantity limits do not interfere with the primary goal of selecting the highest-scoring SKUs.
 
           2. **User Interface Enhancements**
              - Redesigning the results visualization dashboard

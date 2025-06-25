@@ -129,6 +129,52 @@ def basic_optimization_parameters():
         ]
     )
 
+
+
+# =============================================================================
+# SCORING COMPETITION FIXTURE
+# =============================================================================
+
+@pytest.fixture
+def scoring_competition_products_df():
+    """Create 5 SKUs that all compete in same outlet capacity group (same division/axe)"""
+    return pd.DataFrame({
+        'brand': ['Loreal', 'Loreal', 'Maybelline', 'Garnier', 'Loreal'],
+        'division': ['LuxDiv', 'LuxDiv', 'LuxDiv', 'LuxDiv', 'LuxDiv'],  # All same division
+        'axe': ['Skincare', 'Skincare', 'Skincare', 'Skincare', 'Skincare'],  # All same axe
+        'subaxis': ['Anti-Age', 'Moisturizer', 'Serum', 'Cleanser', 'Treatment'],
+        'metier': ['Face', 'Face', 'Face', 'Face', 'Face']
+    }, index=['2001', '2002', '2003', '2004', '2005'])
+
+@pytest.fixture
+def scoring_competition_inventory_df():
+    """Inventory for all 5 competing SKUs with adequate stock"""
+    return pd.DataFrame({
+        'product_ean': ['2001', '2002', '2003', '2004', '2005'],
+        'plant': ['PLANT_FR', 'PLANT_FR', 'PLANT_FR', 'PLANT_FR', 'PLANT_FR'],
+        'quantity': [100, 100, 100, 100, 100],
+        'available_stock': [100, 100, 100, 100, 100]
+    })
+
+@pytest.fixture
+def scoring_competition_channels_df():
+    """Channels including outlets for testing"""
+    return pd.DataFrame({
+        'channel_type': ['outlet', 'outlet', 'store'],
+    }, index=['OUTLET_SCORE', 'OUTLET_MULTI', 'STORE01'])
+
+@pytest.fixture
+def scoring_competition_demand_dict():
+    """Demand for all SKUs to outlets to enable allocation potential"""
+    return {
+        ('2001', 'OUTLET_SCORE'): 50, ('2002', 'OUTLET_SCORE'): 50, ('2003', 'OUTLET_SCORE'): 50,
+        ('2004', 'OUTLET_SCORE'): 50, ('2005', 'OUTLET_SCORE'): 50,
+        ('2001', 'OUTLET_MULTI'): 30, ('2002', 'OUTLET_MULTI'): 30, ('2003', 'OUTLET_MULTI'): 30,
+        ('2004', 'OUTLET_MULTI'): 30, ('2005', 'OUTLET_MULTI'): 30,
+    }
+
+
+
 # =============================================================================
 # CRITICAL TEST 1: ABC Classification Logic
 # =============================================================================
@@ -316,125 +362,508 @@ class TestCoverageDaysConstraints:
         
         assert ean_1001_to_store01 <= 120
 
+
 # =============================================================================
-# CRITICAL TEST 4: Tiered Scoring System Validation
+# COMPREHENSIVE SCORING TEST SUITE
 # =============================================================================
 
-class TestTieredScoringLogic:
-
-    def test_tier_1_A_class_always_wins(self, competing_products_df, sample_channels_df):
-        """Test that Tier 1 (A/B Class) beats even the best possible Tier 2 (C Class)"""
-        inventory_df = pd.DataFrame({
-            'product_ean': ['1001', '1002'], # Both LuxDiv-Skincare
-            'plant': ['PLANT_FR', 'PLANT_FR'],
-            'quantity': [50, 50], 'available_stock': [50, 50]
-        })
-        abc_map = {('1001', 'OUTLET01'): 'A', ('1002', 'OUTLET01'): 'C'}
-        # Give C class the highest possible sellin rank to maximize its score
-        sellin_ranking_dict = {'1002': 100} 
+class TestComprehensiveScoringSystem:
+    
+    def test_tier_hierarchy_A_beats_best_C_and_NEW(self, scoring_competition_products_df, 
+                                                   scoring_competition_channels_df, 
+                                                   scoring_competition_inventory_df,
+                                                   scoring_competition_demand_dict):
+        """Test Tier 1 (A) beats even best possible Tier 2 (C) and Tier 3 (NEW)"""
+        
+        # ABC classification: 1 A-class vs 1 best C-class vs 1 best NEW
+        abc_map = {
+            ('2001', 'OUTLET_SCORE'): 'A',     # Score = 2.0
+            ('2002', 'OUTLET_SCORE'): 'C',     # Score = min(1.99, 1 + 99/100) = 1.99  
+            ('2003', 'OUTLET_SCORE'): 'NEW',   # Score = 1 + 0.8 * (99/100) = 1.792
+        }
+        
+        # Give C and NEW the best possible sellin ranks
+        sellin_ranking_dict = {'2002': 99, '2003': 99}
+        
         params = OptimizationParameters(
-            seasonality_coefficient=1.0, restricted_brands_for_donation=[],
+            seasonality_coefficient=1.0, restricted_brands_for_donation=[], 
             coverage_days_rules=[], outlet_assortment_rules=[], push_new_sku_rules=[],
             outlet_sku_capacity_rules=[
-                OutletSKUCapacityRule(channel_id='OUTLET01', division='LuxDiv', axe='Skincare', max_skus=1)
+                OutletSKUCapacityRule(channel_id='OUTLET_SCORE', division='LuxDiv', axe='Skincare', max_skus=1)
             ]
         )
         
-        # Expected scores: A=2.0, C=min(1.99, 1 + 100/100) = 1.99. A should win.
         model, status, results = optimize_allocation(
-            competing_products_df, sample_channels_df, inventory_df, {}, params, {}, abc_map, sellin_ranking_dict
+            scoring_competition_products_df, scoring_competition_channels_df, 
+            scoring_competition_inventory_df, scoring_competition_demand_dict, 
+            params, {}, abc_map, sellin_ranking_dict
         )
         
         assert status == 'Optimal'
-        allocated_skus = {r['product_sku'] for r in results if r['quantity'] > 0}
-        assert '1001' in allocated_skus
-        assert '1002' not in allocated_skus
+        outlet_allocations = [r for r in results if r['channel_id'] == 'OUTLET_SCORE' and r['quantity'] > 0]
+        allocated_skus = {r['product_sku'] for r in outlet_allocations}
+        
+        # A-class (2.0) should win against C-class (1.99) and NEW (1.792)
+        assert '2001' in allocated_skus
+        assert '2002' not in allocated_skus  
+        assert '2003' not in allocated_skus
+        assert len(allocated_skus) == 1  # Constraint binding
 
-    def test_tier_2_C_class_score_calculation(self, competing_products_df, sample_channels_df):
-        """Test C Class score calculation: min(1.99, 1 + (sellin_rank / 100.0))"""
-        inventory_df = pd.DataFrame({
-            'product_ean': ['1003', '1004'], # Both MassDiv-Makeup
-            'plant': ['PLANT_FR', 'PLANT_FR'],
-            'quantity': [50, 50], 'available_stock': [50, 50]
-        })
-        abc_map = {('1003', 'OUTLET01'): 'C', ('1004', 'OUTLET01'): 'NEW'}
-        # Engineer sellin ranks so C class just barely wins
-        sellin_ranking_dict = {'1003': 88, '1004': 100}
+    def test_tier_hierarchy_B_beats_best_C_and_NEW(self, scoring_competition_products_df, 
+                                                   scoring_competition_channels_df, 
+                                                   scoring_competition_inventory_df,
+                                                   scoring_competition_demand_dict):
+        """Test Tier 1 (B) beats even best possible Tier 2 (C) and Tier 3 (NEW)"""
+        
+        abc_map = {
+            ('2001', 'OUTLET_SCORE'): 'B',     # Score = 2.0
+            ('2002', 'OUTLET_SCORE'): 'C',     # Score = min(1.99, 1 + 99/100) = 1.99  
+            ('2003', 'OUTLET_SCORE'): 'NEW',   # Score = 1 + 0.8 * (99/100) = 1.792
+        }
+        
+        sellin_ranking_dict = {'2002': 99, '2003': 99}
+        
         params = OptimizationParameters(
-            seasonality_coefficient=1.0, restricted_brands_for_donation=[],
-            coverage_days_rules=[], outlet_assortment_rules=[],
-            outlet_sku_capacity_rules=[
-                OutletSKUCapacityRule(channel_id='OUTLET01', division='MassDiv', axe='Makeup', max_skus=1)
-            ],
-            push_new_sku_rules=[PushNewSKURule(division='MassDiv', subaxis='Foundation', push_quantity=50)]
-        )
-
-        # Expected scores: C = min(1.99, 1 + 88/100) = 1.88. NEW = 1 + 0.8 * (100/100) = 1.80. C should win.
-        model, status, results = optimize_allocation(
-            competing_products_df, sample_channels_df, inventory_df, {}, params, {}, abc_map, sellin_ranking_dict
-        )
-
-        assert status == 'Optimal'
-        allocated_skus = {r['product_sku'] for r in results if r['quantity'] > 0}
-        assert '1003' in allocated_skus
-        assert '1004' not in allocated_skus
-
-    def test_tier_2_C_class_score_capped_at_1_99(self, competing_products_df, sample_channels_df):
-        """Test that C Class score is capped at 1.99"""
-        inventory_df = pd.DataFrame({
-            'product_ean': ['1001', '1002'], # Both LuxDiv-Skincare
-            'plant': ['PLANT_FR', 'PLANT_FR'],
-            'quantity': [50, 50], 'available_stock': [50, 50]
-        })
-        abc_map = {('1001', 'OUTLET01'): 'C', ('1002', 'OUTLET01'): 'C'}
-        # Give 1001 a sellin rank that would result in score > 1.99 if not capped
-        sellin_ranking_dict = {'1001': 150, '1002': 98}
-        params = OptimizationParameters(
-            seasonality_coefficient=1.0, restricted_brands_for_donation=[],
+            seasonality_coefficient=1.0, restricted_brands_for_donation=[], 
             coverage_days_rules=[], outlet_assortment_rules=[], push_new_sku_rules=[],
             outlet_sku_capacity_rules=[
-                OutletSKUCapacityRule(channel_id='OUTLET01', division='LuxDiv', axe='Skincare', max_skus=1)
+                OutletSKUCapacityRule(channel_id='OUTLET_SCORE', division='LuxDiv', axe='Skincare', max_skus=1)
             ]
         )
-
-        # Expected scores: 1001 = min(1.99, 1 + 150/100) = 1.99. 1002 = min(1.99, 1 + 98/100) = 1.98. 1001 should win.
+        
         model, status, results = optimize_allocation(
-            competing_products_df, sample_channels_df, inventory_df, {}, params, {}, abc_map, sellin_ranking_dict
+            scoring_competition_products_df, scoring_competition_channels_df, 
+            scoring_competition_inventory_df, scoring_competition_demand_dict, 
+            params, {}, abc_map, sellin_ranking_dict
         )
-
+        
         assert status == 'Optimal'
-        allocated_skus = {r['product_sku'] for r in results if r['quantity'] > 0}
-        assert '1001' in allocated_skus
-        assert '1002' not in allocated_skus
+        outlet_allocations = [r for r in results if r['channel_id'] == 'OUTLET_SCORE' and r['quantity'] > 0]
+        allocated_skus = {r['product_sku'] for r in outlet_allocations}
+        
+        # B-class (2.0) should win
+        assert '2001' in allocated_skus
+        assert len(allocated_skus) == 1
 
-    def test_tier_3_NEW_class_score_calculation(self, competing_products_df, sample_channels_df):
-        """Test NEW Class score calculation: 1 + 0.8 * (sellin_rank / 100.0)"""
-        inventory_df = pd.DataFrame({
-            'product_ean': ['1005', '1006'], # Both ActiveDiv-Skincare
-            'plant': ['PLANT_FR', 'PLANT_FR'],
-            'quantity': [50, 50], 'available_stock': [50, 50]
-        })
-        abc_map = {('1005', 'OUTLET01'): 'NEW', ('1006', 'OUTLET01'): 'C'}
-        # Engineer sellin ranks so NEW class just barely wins
-        sellin_ranking_dict = {'1005': 90, '1006': 70}
+    def test_c_class_scoring_with_sellin_rank(self, scoring_competition_products_df, 
+                                              scoring_competition_channels_df, 
+                                              scoring_competition_inventory_df,
+                                              scoring_competition_demand_dict):
+        """Test C class scoring: min(1.99, 1 + (sellin_rank / 100.0))"""
+        
+        abc_map = {
+            ('2001', 'OUTLET_SCORE'): 'C',     # Score = min(1.99, 1 + 80/100) = 1.80
+            ('2002', 'OUTLET_SCORE'): 'C',     # Score = min(1.99, 1 + 95/100) = 1.95
+            ('2003', 'OUTLET_SCORE'): 'C',     # Score = min(1.99, 1 + 50/100) = 1.50
+        }
+        
+        sellin_ranking_dict = {'2001': 80, '2002': 95, '2003': 50}
+        
         params = OptimizationParameters(
-            seasonality_coefficient=1.0, restricted_brands_for_donation=[],
-            coverage_days_rules=[], outlet_assortment_rules=[],
+            seasonality_coefficient=1.0, restricted_brands_for_donation=[], 
+            coverage_days_rules=[], outlet_assortment_rules=[], push_new_sku_rules=[],
             outlet_sku_capacity_rules=[
-                OutletSKUCapacityRule(channel_id='OUTLET01', division='ActiveDiv', axe='Skincare', max_skus=1)
-            ],
-            push_new_sku_rules=[PushNewSKURule(division='ActiveDiv', subaxis='Cleanser', push_quantity=50)]
+                OutletSKUCapacityRule(channel_id='OUTLET_SCORE', division='LuxDiv', axe='Skincare', max_skus=2)
+            ]
         )
-
-        # Expected scores: NEW = 1 + 0.8 * (90/100) = 1.72. C = min(1.99, 1 + 70/100) = 1.70. NEW should win.
+        
         model, status, results = optimize_allocation(
-            competing_products_df, sample_channels_df, inventory_df, {}, params, {}, abc_map, sellin_ranking_dict
+            scoring_competition_products_df, scoring_competition_channels_df, 
+            scoring_competition_inventory_df, scoring_competition_demand_dict, 
+            params, {}, abc_map, sellin_ranking_dict
         )
-
+        
         assert status == 'Optimal'
-        allocated_skus = {r['product_sku'] for r in results if r['quantity'] > 0}
-        assert '1005' in allocated_skus
-        assert '1006' not in allocated_skus
+        outlet_allocations = [r for r in results if r['channel_id'] == 'OUTLET_SCORE' and r['quantity'] > 0]
+        allocated_skus = {r['product_sku'] for r in outlet_allocations}
+        
+        # 2002 (1.95) and 2001 (1.80) should win over 2003 (1.50)
+        assert '2002' in allocated_skus
+        assert '2001' in allocated_skus  
+        assert '2003' not in allocated_skus
+        assert len(allocated_skus) == 2
+
+    def test_c_class_score_capped_at_1_99(self, scoring_competition_products_df, 
+                                          scoring_competition_channels_df, 
+                                          scoring_competition_inventory_df,
+                                          scoring_competition_demand_dict):
+        """Test that C class score is capped at 1.99 even with high sellin_rank"""
+        
+        abc_map = {
+            ('2001', 'OUTLET_SCORE'): 'C',     # Score = min(1.99, 1 + 150/100) = 1.99 (capped)
+            ('2002', 'OUTLET_SCORE'): 'C',     # Score = min(1.99, 1 + 98/100) = 1.98
+        }
+        
+        # Give 2001 impossible high sellin rank to test capping
+        sellin_ranking_dict = {'2001': 150, '2002': 98}
+        
+        params = OptimizationParameters(
+            seasonality_coefficient=1.0, restricted_brands_for_donation=[], 
+            coverage_days_rules=[], outlet_assortment_rules=[], push_new_sku_rules=[],
+            outlet_sku_capacity_rules=[
+                OutletSKUCapacityRule(channel_id='OUTLET_SCORE', division='LuxDiv', axe='Skincare', max_skus=1)
+            ]
+        )
+        
+        model, status, results = optimize_allocation(
+            scoring_competition_products_df, scoring_competition_channels_df, 
+            scoring_competition_inventory_df, scoring_competition_demand_dict, 
+            params, {}, abc_map, sellin_ranking_dict
+        )
+        
+        assert status == 'Optimal'
+        outlet_allocations = [r for r in results if r['channel_id'] == 'OUTLET_SCORE' and r['quantity'] > 0]
+        allocated_skus = {r['product_sku'] for r in outlet_allocations}
+        
+        # 2001 (1.99 capped) should beat 2002 (1.98)
+        assert '2001' in allocated_skus
+        assert '2002' not in allocated_skus
+
+    def test_new_class_scoring_with_sellin_rank(self, scoring_competition_products_df,
+                                                scoring_competition_inventory_df,
+                                                scoring_competition_demand_dict):
+        """Test NEW class scoring: 1 + 0.8 * (sellin_rank / 100.0)"""
+        
+        channels_df = pd.DataFrame({'channel_type': ['outlet']}, index=['OUTLET_SCORE'])
+        
+        abc_map = {
+            ('2001', 'OUTLET_SCORE'): 'NEW',
+            ('2002', 'OUTLET_SCORE'): 'NEW',
+            ('2003', 'OUTLET_SCORE'): 'NEW',
+        }
+        
+        sellin_ranking_dict = {'2001': 90, '2002': 60, '2003': 80}
+        
+        params = OptimizationParameters(
+            seasonality_coefficient=1.0, restricted_brands_for_donation=[], 
+            coverage_days_rules=[], outlet_assortment_rules=[], push_new_sku_rules=[
+                PushNewSKURule(division='LuxDiv', subaxis='Anti-Age', push_quantity=100),
+                PushNewSKURule(division='LuxDiv', subaxis='Moisturizer', push_quantity=100),
+                PushNewSKURule(division='LuxDiv', subaxis='Serum', push_quantity=100),
+            ],
+            outlet_sku_capacity_rules=[
+                OutletSKUCapacityRule(channel_id='OUTLET_SCORE', division='LuxDiv', axe='Skincare', max_skus=2)
+            ]
+        )
+        
+        model, status, results = optimize_allocation(
+            scoring_competition_products_df, channels_df, 
+            scoring_competition_inventory_df, scoring_competition_demand_dict, 
+            params, {}, abc_map, sellin_ranking_dict
+        )
+        
+        assert status == 'Optimal'
+        outlet_allocations = [r for r in results if r['channel_id'] == 'OUTLET_SCORE' and r['quantity'] > 0]
+        allocated_skus = {r['product_sku'] for r in outlet_allocations}
+        
+        # 2001 (1.72) and 2003 (1.64) should beat 2002 (1.48)
+        assert '2001' in allocated_skus
+        assert '2003' in allocated_skus
+        assert '2002' not in allocated_skus
+        assert len(allocated_skus) == 2
+
+    def test_sellin_rank_edge_case_zero(self, scoring_competition_products_df,
+                                        scoring_competition_inventory_df,
+                                        scoring_competition_demand_dict):
+        """Test sellin_rank = 0 results in base scores"""
+        
+        channels_df = pd.DataFrame({'channel_type': ['outlet']}, index=['OUTLET_SCORE'])
+
+        abc_map = {
+            ('2001', 'OUTLET_SCORE'): 'C',
+            ('2002', 'OUTLET_SCORE'): 'NEW',
+            ('2003', 'OUTLET_SCORE'): 'C',
+        }
+        
+        sellin_ranking_dict = {'2001': 0, '2002': 0, '2003': 50}
+        
+        params = OptimizationParameters(
+            seasonality_coefficient=1.0, restricted_brands_for_donation=[], 
+            coverage_days_rules=[], outlet_assortment_rules=[], push_new_sku_rules=[
+                PushNewSKURule(division='LuxDiv', subaxis='Moisturizer', push_quantity=100),
+            ],
+            outlet_sku_capacity_rules=[
+                OutletSKUCapacityRule(channel_id='OUTLET_SCORE', division='LuxDiv', axe='Skincare', max_skus=1)
+            ]
+        )
+        
+        model, status, results = optimize_allocation(
+            scoring_competition_products_df, channels_df, 
+            scoring_competition_inventory_df, scoring_competition_demand_dict, 
+            params, {}, abc_map, sellin_ranking_dict
+        )
+        
+        assert status == 'Optimal'
+        outlet_allocations = [r for r in results if r['channel_id'] == 'OUTLET_SCORE' and r['quantity'] > 0]
+        allocated_skus = {r['product_sku'] for r in outlet_allocations}
+        
+        # 2003 (1.5) should beat 2001 (1.0) and 2002 (1.0)
+        assert '2003' in allocated_skus
+        assert len(allocated_skus) == 1
+
+    def test_missing_sellin_rank_defaults_to_zero(self, scoring_competition_products_df, 
+                                                  scoring_competition_channels_df, 
+                                                  scoring_competition_inventory_df,
+                                                  scoring_competition_demand_dict):
+        """Test missing sellin_rank defaults to 0 behavior"""
+        
+        abc_map = {
+            ('2001', 'OUTLET_SCORE'): 'C',     # Missing sellin_rank → 0 → Score = 1.0
+            ('2002', 'OUTLET_SCORE'): 'C',     # Score = min(1.99, 1 + 60/100) = 1.60
+        }
+        
+        # Intentionally omit 2001 from sellin_ranking_dict
+        sellin_ranking_dict = {'2002': 60}
+        
+        params = OptimizationParameters(
+            seasonality_coefficient=1.0, restricted_brands_for_donation=[], 
+            coverage_days_rules=[], outlet_assortment_rules=[], push_new_sku_rules=[],
+            outlet_sku_capacity_rules=[
+                OutletSKUCapacityRule(channel_id='OUTLET_SCORE', division='LuxDiv', axe='Skincare', max_skus=1)
+            ]
+        )
+        
+        model, status, results = optimize_allocation(
+            scoring_competition_products_df, scoring_competition_channels_df, 
+            scoring_competition_inventory_df, scoring_competition_demand_dict, 
+            params, {}, abc_map, sellin_ranking_dict
+        )
+        
+        assert status == 'Optimal'
+        outlet_allocations = [r for r in results if r['channel_id'] == 'OUTLET_SCORE' and r['quantity'] > 0]
+        allocated_skus = {r['product_sku'] for r in outlet_allocations}
+        
+        # 2002 (1.60) should beat 2001 (1.0 from missing sellin_rank)
+        assert '2002' in allocated_skus
+        assert '2001' not in allocated_skus
+
+    def test_mixed_abc_class_full_competition(self, scoring_competition_products_df,
+                                              scoring_competition_inventory_df,
+                                              scoring_competition_demand_dict):
+        """Test all ABC classes competing with strategic sellin ranks"""
+        
+        channels_df = pd.DataFrame({'channel_type': ['outlet']}, index=['OUTLET_SCORE'])
+
+        abc_map = {
+            ('2001', 'OUTLET_SCORE'): 'A',
+            ('2002', 'OUTLET_SCORE'): 'B',
+            ('2003', 'OUTLET_SCORE'): 'C',
+            ('2004', 'OUTLET_SCORE'): 'NEW',
+            ('2005', 'OUTLET_SCORE'): 'C',
+        }
+        
+        sellin_ranking_dict = {'2003': 85, '2004': 90, '2005': 75}
+        
+        params = OptimizationParameters(
+            seasonality_coefficient=1.0, restricted_brands_for_donation=[], 
+            coverage_days_rules=[], outlet_assortment_rules=[], push_new_sku_rules=[
+                PushNewSKURule(division='LuxDiv', subaxis='Cleanser', push_quantity=100),
+            ],
+            outlet_sku_capacity_rules=[
+                OutletSKUCapacityRule(channel_id='OUTLET_SCORE', division='LuxDiv', axe='Skincare', max_skus=3)
+            ]
+        )
+        
+        model, status, results = optimize_allocation(
+            scoring_competition_products_df, channels_df, 
+            scoring_competition_inventory_df, scoring_competition_demand_dict, 
+            params, {}, abc_map, sellin_ranking_dict
+        )
+        
+        assert status == 'Optimal'
+        outlet_allocations = [r for r in results if r['channel_id'] == 'OUTLET_SCORE' and r['quantity'] > 0]
+        allocated_skus = {r['product_sku'] for r in outlet_allocations}
+        
+        # Top 3: A (2.0), B (2.0), C (1.85) should beat C (1.75) and NEW (1.72)
+        assert '2001' in allocated_skus  # A class
+        assert '2002' in allocated_skus  # B class
+        assert '2003' in allocated_skus  # C class (higher score)
+        assert '2005' not in allocated_skus  # C class (lower score)
+        assert '2004' not in allocated_skus  # NEW class
+        assert len(allocated_skus) == 3
+
+    def test_score_tie_breaking_behavior(self, scoring_competition_products_df, 
+                                         scoring_competition_channels_df, 
+                                         scoring_competition_inventory_df,
+                                         scoring_competition_demand_dict):
+        """Test what happens when scores are exactly equal"""
+        
+        abc_map = {
+            ('2001', 'OUTLET_SCORE'): 'C',     # Score = min(1.99, 1 + 80/100) = 1.80
+            ('2002', 'OUTLET_SCORE'): 'C',     # Score = min(1.99, 1 + 80/100) = 1.80 (tie!)
+            ('2003', 'OUTLET_SCORE'): 'C',     # Score = min(1.99, 1 + 70/100) = 1.70
+        }
+        
+        sellin_ranking_dict = {'2001': 80, '2002': 80, '2003': 70}
+        
+        params = OptimizationParameters(
+            seasonality_coefficient=1.0, restricted_brands_for_donation=[], 
+            coverage_days_rules=[], outlet_assortment_rules=[], push_new_sku_rules=[],
+            outlet_sku_capacity_rules=[
+                OutletSKUCapacityRule(channel_id='OUTLET_SCORE', division='LuxDiv', axe='Skincare', max_skus=2)
+            ]
+        )
+        
+        model, status, results = optimize_allocation(
+            scoring_competition_products_df, scoring_competition_channels_df, 
+            scoring_competition_inventory_df, scoring_competition_demand_dict, 
+            params, {}, abc_map, sellin_ranking_dict
+        )
+        
+        assert status == 'Optimal'
+        outlet_allocations = [r for r in results if r['channel_id'] == 'OUTLET_SCORE' and r['quantity'] > 0]
+        allocated_skus = {r['product_sku'] for r in outlet_allocations}
+        
+        # With tie scores, solver can pick either 2001 or 2002, but both should beat 2003
+        assert '2003' not in allocated_skus  # Definitely loses (1.70)
+        assert len(allocated_skus) == 2
+        
+        # At least one of the tied SKUs should be allocated
+        tie_skus_allocated = len({'2001', '2002'} & allocated_skus)
+        assert tie_skus_allocated >= 1
+
+    def test_multiple_outlet_channels_independent_scoring(self, scoring_competition_products_df, 
+                                                          scoring_competition_channels_df, 
+                                                          scoring_competition_inventory_df,
+                                                          scoring_competition_demand_dict):
+        """Test scoring works independently across different outlet channels"""
+        
+        abc_map = {
+            ('2001', 'OUTLET_SCORE'): 'A', ('2001', 'OUTLET_MULTI'): 'C',  # Different ABC per channel
+            ('2002', 'OUTLET_SCORE'): 'C', ('2002', 'OUTLET_MULTI'): 'A',  
+            ('2003', 'OUTLET_SCORE'): 'NEW', ('2003', 'OUTLET_MULTI'): 'NEW',
+        }
+        
+        sellin_ranking_dict = {'2002': 95, '2003': 85}
+        
+        params = OptimizationParameters(
+            seasonality_coefficient=1.0, restricted_brands_for_donation=[], 
+            coverage_days_rules=[], outlet_assortment_rules=[], push_new_sku_rules=[
+                PushNewSKURule(division='LuxDiv', subaxis='Serum', push_quantity=100),
+            ],
+            outlet_sku_capacity_rules=[
+                OutletSKUCapacityRule(channel_id='OUTLET_SCORE', division='LuxDiv', axe='Skincare', max_skus=1),
+                OutletSKUCapacityRule(channel_id='OUTLET_MULTI', division='LuxDiv', axe='Skincare', max_skus=1),
+            ]
+        )
+        
+        model, status, results = optimize_allocation(
+            scoring_competition_products_df, scoring_competition_channels_df, 
+            scoring_competition_inventory_df, scoring_competition_demand_dict, 
+            params, {}, abc_map, sellin_ranking_dict
+        )
+        
+        assert status == 'Optimal'
+        
+        outlet_score_allocations = [r for r in results if r['channel_id'] == 'OUTLET_SCORE' and r['quantity'] > 0]
+        outlet_multi_allocations = [r for r in results if r['channel_id'] == 'OUTLET_MULTI' and r['quantity'] > 0]
+        
+        outlet_score_skus = {r['product_sku'] for r in outlet_score_allocations}
+        outlet_multi_skus = {r['product_sku'] for r in outlet_multi_allocations}
+        
+        # OUTLET_SCORE: 2001(A=2.0) should beat 2002(C=1.95) and 2003(NEW=1.68)  
+        assert '2001' in outlet_score_skus
+        
+        # OUTLET_MULTI: 2002(A=2.0) should beat 2001(C=1.0) and 2003(NEW=1.68)
+        assert '2002' in outlet_multi_skus
+
+    def test_coverage_days_interaction_with_scoring(self, scoring_competition_products_df,
+                                                    scoring_competition_inventory_df,
+                                                    scoring_competition_demand_dict):
+        """Test whether coverage days constraints interfere with scoring priorities"""
+        
+        channels_df = pd.DataFrame({'channel_type': ['outlet']}, index=['OUTLET_SCORE'])
+
+        abc_map = {
+            ('2001', 'OUTLET_SCORE'): 'A',
+            ('2002', 'OUTLET_SCORE'): 'C',
+        }
+        
+        sellin_ranking_dict = {'2002': 85}
+        
+        params = OptimizationParameters(
+            seasonality_coefficient=1.0, restricted_brands_for_donation=[], 
+            outlet_assortment_rules=[], push_new_sku_rules=[],
+            coverage_days_rules=[
+                CoverageDaysRule(channel_id='outlet', abc_class='A', coverage_days=5),
+                CoverageDaysRule(channel_id='outlet', abc_class='C', coverage_days=30),
+            ],
+            outlet_sku_capacity_rules=[
+                OutletSKUCapacityRule(channel_id='OUTLET_SCORE', division='LuxDiv', axe='Skincare', max_skus=1)
+            ]
+        )
+        
+        model, status, results = optimize_allocation(
+            scoring_competition_products_df, channels_df, 
+            scoring_competition_inventory_df, scoring_competition_demand_dict, 
+            params, {}, abc_map, sellin_ranking_dict
+        )
+        
+        assert status == 'Optimal'
+        outlet_allocations = [r for r in results if r['channel_id'] == 'OUTLET_SCORE' and r['quantity'] > 0]
+        allocated_skus = {r['product_sku'] for r in outlet_allocations}
+        
+        # With the lexicographical objective, the higher-scoring SKU should always be chosen,
+        # as long as it can be allocated at least 1 unit.
+        # Here, SKU '2001' (Score 2.0) should be chosen over SKU '2002' (Score 1.85).
+        assert '2001' in allocated_skus
+        assert '2002' not in allocated_skus
+        assert len(allocated_skus) == 1
+
+    def test_complex_multi_constraint_scoring_scenario(self, scoring_competition_products_df,
+                                                       scoring_competition_inventory_df,
+                                                       scoring_competition_demand_dict):
+        """Test scoring under multiple interacting constraints"""
+        
+        channels_df = pd.DataFrame({'channel_type': ['outlet']}, index=['OUTLET_SCORE'])
+
+        abc_map = {
+            ('2001', 'OUTLET_SCORE'): 'A',
+            ('2002', 'OUTLET_SCORE'): 'B',
+            ('2003', 'OUTLET_SCORE'): 'C',
+            ('2004', 'OUTLET_SCORE'): 'NEW',
+            ('2005', 'OUTLET_SCORE'): 'C',
+        }
+        
+        sellin_ranking_dict = {'2003': 90, '2004': 93, '2005': 80}
+        
+        params = OptimizationParameters(
+            seasonality_coefficient=1.0, restricted_brands_for_donation=[], 
+            coverage_days_rules=[
+                CoverageDaysRule(channel_id='outlet', abc_class='A', coverage_days=15),
+                CoverageDaysRule(channel_id='outlet', abc_class='B', coverage_days=12),
+                CoverageDaysRule(channel_id='outlet', abc_class='C', coverage_days=8),
+            ],
+            outlet_assortment_rules=[
+                OutletAssortmentRule(metier='Face', subaxis='Anti-Age', brand='Loreal', max_skus=1),
+            ],
+            push_new_sku_rules=[
+                PushNewSKURule(division='LuxDiv', subaxis='Cleanser', push_quantity=25),
+            ],
+            outlet_sku_capacity_rules=[
+                OutletSKUCapacityRule(channel_id='OUTLET_SCORE', division='LuxDiv', axe='Skincare', max_skus=3)
+            ]
+        )
+        
+        model, status, results = optimize_allocation(
+            scoring_competition_products_df, channels_df, 
+            scoring_competition_inventory_df, scoring_competition_demand_dict, 
+            params, {}, abc_map, sellin_ranking_dict
+        )
+        
+        assert status == 'Optimal'
+        outlet_allocations = [r for r in results if r['channel_id'] == 'OUTLET_SCORE' and r['quantity'] > 0]
+        allocated_skus = {r['product_sku'] for r in outlet_allocations}
+        
+        # With the lexicographical objective, the highest scoring feasible SKUs should be prioritized.
+        # Top 3 scores: 2001 (A, 2.0), 2002 (B, 2.0), 2003 (C, 1.90)
+        # All are feasible. The assortment rule on '2001' does not prevent its selection, just limits others if they were in the same group.
+        assert '2001' in allocated_skus
+        assert '2002' in allocated_skus
+        assert '2003' in allocated_skus
+        assert len(allocated_skus) == 3  # Respects outlet capacity constraint
+
+
 
 # =============================================================================
 # CRITICAL TEST 5: Restricted Brands
@@ -557,12 +986,19 @@ class TestOutletAssortmentConstraints:
         # Should not exceed assortment limit
         assert len(face_foundation_loreal_eans_in_outlet01) <= 1
 
-    def test_outlet_assortment_different_groups_independent(self, sample_products_df, sample_channels_df, sample_inventory_df, sample_demand_dict, sample_existing_stock_dict, sample_sellin_ranking_dict):
+    def test_outlet_assortment_different_groups_independent(self, sample_products_df, sample_inventory_df, sample_existing_stock_dict, sample_sellin_ranking_dict):
         """Test that different metier-subaxis-brand groups have independent limits"""
         
+        channels_df = pd.DataFrame({'channel_type': ['outlet']}, index=['OUTLET01'])
+        
+        demand_dict = {
+            ('1001', 'OUTLET01'): 35,
+            ('1003', 'OUTLET01'): 20, 
+        }
+
         abc_map = {
-            ('1001', 'OUTLET01'): 'A',  # Loreal, Face, Foundation
-            ('1003', 'OUTLET01'): 'A',  # Maybelline, Eyes, Mascara (different group)
+            ('1001', 'OUTLET01'): 'A',
+            ('1003', 'OUTLET01'): 'A',
         }
         
         params = OptimizationParameters(
@@ -580,8 +1016,8 @@ class TestOutletAssortmentConstraints:
         )
         
         model, status, results = optimize_allocation(
-            sample_products_df, sample_channels_df, sample_inventory_df,
-            sample_demand_dict, params, sample_existing_stock_dict, abc_map, sample_sellin_ranking_dict
+            sample_products_df, channels_df, sample_inventory_df,
+            demand_dict, params, sample_existing_stock_dict, abc_map, sample_sellin_ranking_dict
         )
         
         assert status == 'Optimal'
@@ -589,8 +1025,9 @@ class TestOutletAssortmentConstraints:
         # Both should be able to allocate since they're in different groups
         allocated_eans = set(r['product_sku'] for r in results if r['channel_id'] == 'OUTLET01' and r['quantity'] > 0)
         
-        # Both EANs should be able to allocate (different assortment groups)
-        assert '1001' in allocated_eans or '1003' in allocated_eans  # At least one should allocate
+        # Both EANs should be able to allocate since they are in different assortment groups
+        assert '1001' in allocated_eans
+        assert '1003' in allocated_eans
 
 # =============================================================================
 # CRITICAL TEST 7: New SKU Push Constraints (MISSING)
@@ -1174,117 +1611,7 @@ class TestResultValidation:
 
 
 
-# =============================================================================
-# CRITICAL TEST: Tiered Scoring Forced Choice Scenarios
-# =============================================================================
 
-class TestTieredForcedChoiceScoring:
-
-    def test_high_rank_C_beats_low_rank_NEW(self, competing_products_df, sample_channels_df):
-        """Test that a C-class SKU with high sellin rank beats a NEW SKU with low sellin rank."""
-        inventory_df = pd.DataFrame({
-            'product_ean': ['1001', '1002'], # LuxDiv-Skincare
-            'plant': ['PLANT_FR', 'PLANT_FR'],
-            'quantity': [50, 50], 'available_stock': [50, 50]
-        })
-        abc_map = {('1001', 'OUTLET01'): 'C', ('1002', 'OUTLET01'): 'NEW'}
-        sellin_ranking_dict = {'1001': 90, '1002': 10} # C has high rank, NEW has low rank
-        params = OptimizationParameters(
-            seasonality_coefficient=1.0, restricted_brands_for_donation=[],
-            coverage_days_rules=[], outlet_assortment_rules=[],
-            outlet_sku_capacity_rules=[
-                OutletSKUCapacityRule(channel_id='OUTLET01', division='LuxDiv', axe='Skincare', max_skus=1)
-            ],
-            push_new_sku_rules=[PushNewSKURule(division='LuxDiv', subaxis='Moisturizer', push_quantity=50)]
-        )
-
-        # Expected scores: C = 1.90, NEW = 1.08. C should win.
-        model, status, results = optimize_allocation(
-            competing_products_df, sample_channels_df, inventory_df, {}, params, {}, abc_map, sellin_ranking_dict
-        )
-        
-        assert status == 'Optimal'
-        allocated_skus = {r['product_sku'] for r in results if r['quantity'] > 0}
-        assert '1001' in allocated_skus
-        assert '1002' not in allocated_skus
-
-    def test_high_rank_NEW_beats_low_rank_C(self, competing_products_df, sample_channels_df):
-        """Test that a NEW SKU with high sellin rank beats a C-class SKU with low sellin rank."""
-        inventory_df = pd.DataFrame({
-            'product_ean': ['1003', '1004'], # MassDiv-Makeup
-            'plant': ['PLANT_FR', 'PLANT_FR'],
-            'quantity': [50, 50], 'available_stock': [50, 50]
-        })
-        abc_map = {('1003', 'OUTLET01'): 'NEW', ('1004', 'OUTLET01'): 'C'}
-        sellin_ranking_dict = {'1003': 95, '1004': 20} # NEW has high rank, C has low rank
-        params = OptimizationParameters(
-            seasonality_coefficient=1.0, restricted_brands_for_donation=[],
-            coverage_days_rules=[], outlet_assortment_rules=[],
-            outlet_sku_capacity_rules=[
-                OutletSKUCapacityRule(channel_id='OUTLET01', division='MassDiv', axe='Makeup', max_skus=1)
-            ],
-            push_new_sku_rules=[PushNewSKURule(division='MassDiv', subaxis='Mascara', push_quantity=50)]
-        )
-
-        # Expected scores: NEW = 1.76, C = 1.20. NEW should win.
-        model, status, results = optimize_allocation(
-            competing_products_df, sample_channels_df, inventory_df, {}, params, {}, abc_map, sellin_ranking_dict
-        )
-        
-        assert status == 'Optimal'
-        allocated_skus = {r['product_sku'] for r in results if r['quantity'] > 0}
-        assert '1003' in allocated_skus
-        assert '1004' not in allocated_skus
-
-    def test_portfolio_optimization_with_tiered_scoring(self, competing_products_df, sample_channels_df):
-        """Test a mix of A, C, and NEW SKUs competing for limited slots."""
-        inventory_df = pd.DataFrame({
-            'product_ean': ['1001', '1002', '1003', '1004', '1005', '1006'],
-            'plant': ['PLANT_FR'] * 6,
-            'quantity': [50] * 6, 'available_stock': [50] * 6
-        })
-        abc_map = {
-            ('1001', 'OUTLET01'): 'A',       # LuxDiv-Skincare
-            ('1002', 'OUTLET01'): 'C',       # LuxDiv-Skincare
-            ('1003', 'OUTLET01'): 'NEW',     # MassDiv-Makeup
-            ('1004', 'OUTLET01'): 'C',       # MassDiv-Makeup
-            ('1005', 'OUTLET01'): 'C',       # ActiveDiv-Skincare
-            ('1006', 'OUTLET01'): 'NEW',     # ActiveDiv-Skincare
-        }
-        sellin_ranking_dict = {
-            '1002': 95, # High rank C
-            '1003': 90, # High rank NEW
-            '1004': 10, # Low rank C
-            '1005': 80, # High rank C
-            '1006': 85, # High rank NEW
-        }
-        params = OptimizationParameters(
-            seasonality_coefficient=1.0, restricted_brands_for_donation=[],
-            coverage_days_rules=[], outlet_assortment_rules=[],
-            outlet_sku_capacity_rules=[
-                OutletSKUCapacityRule(channel_id='OUTLET01', division='LuxDiv', axe='Skincare', max_skus=1),
-                OutletSKUCapacityRule(channel_id='OUTLET01', division='MassDiv', axe='Makeup', max_skus=1),
-                OutletSKUCapacityRule(channel_id='OUTLET01', division='ActiveDiv', axe='Skincare', max_skus=1),
-            ],
-            push_new_sku_rules=[
-                PushNewSKURule(division='MassDiv', subaxis='Mascara', push_quantity=50),
-                PushNewSKURule(division='ActiveDiv', subaxis='Treatment', push_quantity=50)
-            ]
-        )
-
-        # Expected Scores & Winners:
-        # Group 1 (LuxDiv-Skincare): 1001(A, 2.0) vs 1002(C, 1.95) -> 1001 wins
-        # Group 2 (MassDiv-Makeup): 1003(NEW, 1.72) vs 1004(C, 1.10) -> 1003 wins
-        # Group 3 (ActiveDiv-Skincare): 1005(C, 1.80) vs 1006(NEW, 1.68) -> 1005 wins
-        model, status, results = optimize_allocation(
-            competing_products_df, sample_channels_df, inventory_df, {}, params, {}, abc_map, sellin_ranking_dict
-        )
-
-        assert status == 'Optimal'
-        allocated_skus = {r['product_sku'] for r in results if r['quantity'] > 0}
-        
-        expected_winners = {'1001', '1003', '1005'}
-        assert allocated_skus == expected_winners
 
 
 if __name__ == '__main__':

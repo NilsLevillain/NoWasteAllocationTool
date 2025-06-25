@@ -18,7 +18,7 @@
         - Improve chart readability and overall UI aesthetics with adjustments to data label colors, chart size, and global font size.
     - Resolved associated JavaScript errors during development, ensuring stable frontend operation.
 - **Enhanced Detailed Allocation Table (June 2025)**:
-    - Updated `frontend/index.html` and `frontend/app.js` to include new columns ('Axe', 'SubAxe', 'Metier', 'SKU', 'Description', 'FlagExcess6months', 'FlagExcess12months') in the detailed allocation table and reordered them as requested.
+    - Updated `frontend/index.html` and `frontend/app.js` to include new columns ('Axe', 'SubAxe', 'Metier', 'SKU', 'Description', 'FlagExcess6months', and 'FlagExcess12months') in the detailed allocation table and reordered them as requested.
     - Modified `backend/utils.py` (`load_products_df`, `load_inventory_df`) and `main.py` (`/api/allocation_data`) to load, process, and serve the data for these new columns.
 - **UI Consistency and Dynamic Remaining Quantity (June 2025)**:
     - Ensured consistent use of `plant_description` for plant-related display and filtering in `main.py` and `frontend/app.js`.
@@ -57,8 +57,7 @@
     - Modified `main.py` (`/api/allocation_data` endpoint) so that the `units` field sent to the frontend is now `min(StockToAllocate, AvailableStock)`. This aligns the displayed 'Units' with the actual quantity considered by the solver's supply constraints.
     - Updated the data filtering logic in `/api/allocation_data` to `if item_data['units'] > 0:` since `item_data['units']` now correctly reflects the allocatable quantity.
     - Corrected syntax errors (missing comma) in `main.py` that arose during previous modifications.
-- **Manual Allocation Saving**: The `saveAllocation` function in `frontend/app.js` now successfully sends EAN-Plant specific data to the `/api/save_allocations` endpoint, allowing users to persist manual adjustments.
-- **Dynamic Allocation Percentage and Remaining Quantity**: The `handleAllocationChange` function in `frontend/app.js` dynamically calculates and updates the "Allocation %" and "Remaining Qty" cells in real-time as users modify allocation inputs, providing immediate feedback.
+-   **Optimization Engine and Scoring Logic Fixed**: Addressed a core issue in the optimization engine where quantity limits from `PushNewSKURule` and `CoverageDaysRule` constraints were preventing the selection of high-scoring SKUs. Implemented a "Big M" formulation to ensure these quantity limits are only applied *after* the SKU is selected. Also, the tests were updated to isolate the channel being tested.
 
 ## Remaining Work
 - Continue refinement of the optimization engine constraints and objective function as outlined in `activeContext.md`.
@@ -89,3 +88,6 @@
 - Unit tests for the new ABC classification logic have been implemented in `tests/test_solver.py`.
 - Ready to proceed with further development on optimization logic and UI, with a solid foundation for data handling and display.
 - *Ongoing*: Addressing the "out of application context" error in the unit tests for the `/api/ean_deep_dive_data` endpoint.
+
+</final_file_content>
+</write_to_file>

@@ -278,10 +278,18 @@ def optimize_allocation(products_df: pd.DataFrame, channels_df: pd.DataFrame, in
                                           ((p, c) for p in products for c in channels), 
                                           cat='Binary')
 
-    # Objective function: Maximize total allocation weighted by calculated scores
-    model += (pulp.lpSum(x[p, plant, c] * score_per_ean_channel[(p, c)]
-                         for p, plant in ean_plant_pairs for c in channels), "Maximize_Weighted_Allocation")
-    logger.debug("Objective function added: Maximize_Weighted_Allocation.")
+    # Objective function: Lexicographical approach to prioritize SKU selection by score, then maximize quantity.
+    # We use a large factor for the score associated with selecting an EAN for a channel (y_ean_channel)
+    # and a smaller factor for the quantity (x). This ensures score is the primary driver.
+    SCORE_WEIGHT = 10000  # Large weight for score
+    QUANTITY_WEIGHT = 1     # Smaller weight for quantity
+
+    model += (
+        pulp.lpSum(y_ean_channel[p, c] * score_per_ean_channel.get((p, c), 0) * SCORE_WEIGHT for p in products for c in channels) +
+        pulp.lpSum(x[p, plant, c] * QUANTITY_WEIGHT for p, plant, c in x),
+        "Maximize_Weighted_Allocation_Lexicographical"
+    )
+    logger.debug("Objective function added: Maximize_Weighted_Allocation_Lexicographical.")
 
     logger.info("Adding supply constraints (per EAN-Plant).")
     for p, plant_code in ean_plant_pairs:
@@ -345,27 +353,26 @@ def optimize_allocation(products_df: pd.DataFrame, channels_df: pd.DataFrame, in
                 div, sub = products_df.loc[p_ean].get('division'), products_df.loc[p_ean].get('subaxis')
                 push_qty = push_new_sku_lookup.get((div, sub), 0) if div and sub else 0
                 # Sum of allocations for this EAN to this Channel, across all plants, must be <= push_qty
-                model += pulp.lpSum(x[p_ean, pl_specific, c] for pl_specific in plants_for_this_ean) <= push_qty, f"Push_New_SKU_{p_ean}_{c}"
-                logger.debug(f"Push new SKU constraint for EAN:{p_ean} C:{c} (NEW): sum_plants(qty) <= {push_qty}. Applied.")
-            else: 
-                # Get channel type for the current channel ID c
+                # This constraint is only active if the SKU is selected for the channel (y_ean_channel = 1)
+                # We use a Big M formulation to enforce this. M is total available stock for the EAN.
+                M_ean_total_stock = sum(min(stock_to_allocate_per_ean_plant.get((p_ean, pl), 0), available_stock_per_ean_plant.get((p_ean, pl), 0)) for pl in plants_for_this_ean)
+                model += pulp.lpSum(x[p_ean, pl_specific, c] for pl_specific in plants_for_this_ean) <= push_qty + M_ean_total_stock * (1 - y_ean_channel[p_ean, c]), f"Push_New_SKU_{p_ean}_{c}"
+                logger.debug(f"Push new SKU constraint for EAN:{p_ean} C:{c} (NEW): sum_plants(qty) <= {push_qty}. Applied with Big M.")
+            else:
                 channel_type_for_c = channels_df.loc[c, 'channel_type']
                 lookup_key = (channel_type_for_c, abc_class)
-                #logger.debug(f"Coverage lookup: EAN {p_ean}, C_ID {c}, C_Type {channel_type_for_c}, ABC {abc_class}. Using key: {lookup_key}")
-                cov_days = coverage_rules_dict.get(lookup_key) 
-                #logger.debug(f"Coverage lookup result for EAN {p_ean}, C_ID {c} (Type {channel_type_for_c}), ABC {abc_class} (key {lookup_key}): cov_days = {cov_days} (Type: {type(cov_days)})")
+                cov_days = coverage_rules_dict.get(lookup_key)
                 
                 if cov_days is not None and cov_days >= 0:
-                    adj_demand = demand_dict.get((p_ean, c), 0) * parameters.seasonality_coefficient # EAN-Channel demand
-                    #logger.debug(f"Coverage calc: EAN {p_ean}, C_ID {c}. Adjusted demand: {adj_demand}, Current stock: {current_stock_for_pc}, Cov_days: {cov_days}")
+                    adj_demand = demand_dict.get((p_ean, c), 0) * parameters.seasonality_coefficient
+                    allow_alloc = 0
                     if adj_demand > 0:
                         allow_alloc = max(0, (adj_demand / 14.0) * cov_days - current_stock_for_pc)
-                        # Sum of allocations for this EAN to this Channel, across all plants
-                        model += pulp.lpSum(x[p_ean, pl_specific, c] for pl_specific in plants_for_this_ean) <= allow_alloc, f"Max_Coverage_Days_{p_ean}_{c}"
-                        #logger.debug(f"Coverage constraint for EAN:{p_ean} C_ID:{c} (ABC:{abc_class}): sum_plants(qty) <= {allow_alloc}. Applied.")
-                    else: 
-                        model += pulp.lpSum(x[p_ean, pl_specific, c] for pl_specific in plants_for_this_ean) <= 0, f"Max_Coverage_Days_Zero_Demand_{p_ean}_{c}"
-                        #logger.debug(f"Coverage constraint for EAN:{p_ean} C_ID:{c} (ABC:{abc_class}): Zero demand, sum_plants(qty) <= 0. Applied.")
+                    
+                    # Use Big M formulation here as well to ensure the constraint only applies if the SKU is selected.
+                    M_ean_total_stock = sum(min(stock_to_allocate_per_ean_plant.get((p_ean, pl), 0), available_stock_per_ean_plant.get((p_ean, pl), 0)) for pl in plants_for_this_ean)
+                    model += pulp.lpSum(x[p_ean, pl_specific, c] for pl_specific in plants_for_this_ean) <= allow_alloc + M_ean_total_stock * (1 - y_ean_channel[p_ean, c]), f"Max_Coverage_Days_{p_ean}_{c}"
+                    logger.debug(f"Coverage constraint for EAN:{p_ean} C_ID:{c} (ABC:{abc_class}): sum_plants(qty) <= {allow_alloc}. Applied with Big M.")
                 else:
                     logger.debug(f"Coverage constraint for EAN:{p_ean} C_ID:{c} (ABC:{abc_class}): Skipped (cov_days is None or negative: {cov_days}).")
     

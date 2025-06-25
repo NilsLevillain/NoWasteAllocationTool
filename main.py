@@ -16,7 +16,8 @@ from backend.schemas import OptimizationParameters, CoverageDaysRule, OutletSKUC
 from backend.config import Config
 from backend.utils import (
     load_products_df, load_channels_df, load_inventory_df, load_demand_dict,
-    load_existing_stock_dict, load_optimization_rules, _get_channel_id_from_row
+    load_existing_stock_dict, load_optimization_rules, _get_channel_id_from_row,
+    load_sellin_ranking_dict
 )
 
 app = Flask(__name__)
@@ -274,6 +275,7 @@ def auto_allocate_endpoint():
         instore_stock_file_path = os.path.join(base_data_path, 'InputData', 'in_store_inventory.csv')
         intransit_stock_file_path = os.path.join(base_data_path, 'InputData', 'stock_in_transit.csv')
         abc_ranking_file_path = os.path.join(base_data_path, 'InputData', 'ABC_ranking.csv') # Path for ABC ranking
+        sellin_file_path = os.path.join(base_data_path, 'InputData', 'sellin.csv')
 
         products_df = load_products_df(masterdata_file_path) # EANs in index are normalized
         if products_df.empty: return jsonify({'error': 'Failed to load products data.'}), 500
@@ -310,9 +312,11 @@ def auto_allocate_endpoint():
             abc_ranking_file_path=abc_ranking_file_path  # Function will normalize 'barcode'
         )
         
+        sellin_ranking_dict = load_sellin_ranking_dict(sellin_file_path)
+        
         model, status, allocation_results = optimize_allocation(
             products_df, channels_df, inventory_df, demand_dict, parameters, 
-            existing_stock_dict, product_channel_abc_map
+            existing_stock_dict, product_channel_abc_map, sellin_ranking_dict
         )
         if status != 'Optimal': return jsonify({'error': f'Solver status: {status}'}), 500
         

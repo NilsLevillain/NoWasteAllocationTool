@@ -3,9 +3,10 @@
 This document explains the linear programming model used in the inventory allocation optimization system. The model is implemented using PuLP in the solver.py file and includes a sophisticated weighted scoring system for value maximization.
 
 ## Objective Function
-The model maximizes the total weighted value of products allocated from all EAN-Plant combinations to all channels:
+The model maximizes the total weighted value of products allocated from all EAN-Plant combinations to all channels, using a lexicographical approach:
 
-**Maximize: ∑(p∈P, plant∈PL, c∈C) x[p, plant, c] × score[p, c]**
+**Maximize: ∑(p∈P, c∈C) y_ean_channel[p, c] * score[p, c] * SCORE_WEIGHT + ∑(p∈P, plant∈PL, c∈C) x[p, plant, c] * QUANTITY_WEIGHT**
+
 Where:
 
 - `x[p, plant, c]` represents the quantity of product EAN `p` from plant `plant` allocated to channel `c`
@@ -58,13 +59,17 @@ For outlet channels, the number of unique EANs (SKUs) allocated within each divi
 For all outlet channels `c` and for each (division, axe) group.
 
 ### 3. Coverage Days Constraints (Per EAN-Channel, Summing Over Plants)
-For products with existing ABC classification (not NEW), the total quantity of an EAN allocated to a channel is limited by coverage days.
+For products with existing ABC classification (not NEW), the total quantity of an EAN allocated to a channel is limited by coverage days, using a "Big M" formulation:
 
-**Current Implementation (Bi-weekly basis):**
-`∑(plant∈PL_p) x[p, plant, c] ≤ max(0, (demand[p,c] / 14.0) × coverage_days[c,abc_class] × seasonality_coefficient - current_stock[p,c])`
+`∑(plant∈PL_p) x[p, plant, c] ≤ allow_alloc + M_ean_total_stock * (1 - y_ean_channel[p, c])`
+
+Where:
+- `allow_alloc = max(0, (demand[p,c] / 14.0) × coverage_days[c,abc_class] × seasonality_coefficient - current_stock[p,c])`
+- `M_ean_total_stock` is the total available stock for the EAN across all plants
+- This constraint is only active if the SKU is selected for the channel (`y_ean_channel = 1`)
 
 **Future Parameterizable Implementation:**
-`∑(plant∈PL_p) x[p, plant, c] ≤ max(0, (demand[p,c] / coverage_days_divisor) × coverage_days[c,abc_class] × seasonality_coefficient - current_stock[p,c])`
+`∑(plant∈PL_p) x[p, plant, c] ≤ max(0, (demand[p,c] / coverage_days_divisor) × coverage_days[c,abc_class] × seasonality_coefficient - current_stock[p,c]) + M_ean_total_stock * (1 - y_ean_channel[p, c])`
 
 Where:
 - `coverage_days_divisor` will be a parameter (currently hardcoded to 14.0 for bi-weekly)
@@ -72,10 +77,13 @@ Where:
 - `seasonality_coefficient` is already a parameter in `OptimizationParameters`
 
 ### 4. New SKU Push Constraints (Per EAN-Channel, Summing Over Plants)
-For products classified as NEW, the total quantity of an EAN allocated to a channel is limited by a push quantity.
+For products classified as NEW, the total quantity of an EAN allocated to a channel is limited by a push quantity, using a "Big M" formulation:
 
-**∑(plant∈PL_p) x[p, plant, c] ≤ push_qty[division,subaxis]**
-For all EANs `p` classified as NEW in channel `c`.
+`∑(plant∈PL_p) x[p, plant, c] ≤ push_qty[division,subaxis] + M_ean_total_stock * (1 - y_ean_channel[p, c])`
+
+Where:
+- `M_ean_total_stock` is the total available stock for the EAN across all plants
+- This constraint is only active if the SKU is selected for the channel (`y_ean_channel = 1`)
 
 ### 5. Outlet Assortment Constraints (Per EAN)
 For outlet channels, the number of unique EANs (SKUs) allocated within each metier-subaxis-brand group is limited.
