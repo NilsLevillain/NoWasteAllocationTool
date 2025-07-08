@@ -349,7 +349,7 @@ def load_optimization_rules(file_path: str, rule_type: Type[Union[CoverageDaysRu
         try:
             # rule_data keys should be pydantic field names, values from excel row using excel col name
             rule_data = {pydantic_field: r[excel_col] for pydantic_field, excel_col in column_mappings.items()}
-            logger.debug(f"Processed rule data for row {i} in {rule_type.__name__} ({file_path}): {rule_data}")
+            #logger.debug(f"Processed rule data for row {i} in {rule_type.__name__} ({file_path}): {rule_data}")
             
             # Special handling for integer conversion if needed by Pydantic model
             for key, value in rule_data.items(): # Here, key is pydantic_field_name
@@ -364,7 +364,7 @@ def load_optimization_rules(file_path: str, rule_type: Type[Union[CoverageDaysRu
             
             created_rule = rule_type(**rule_data)
             rules.append(created_rule)
-            logger.debug(f"Created Pydantic object for row {i} in {rule_type.__name__} ({file_path}): {created_rule.model_dump_json(indent=2)}")
+            #logger.debug(f"Created Pydantic object for row {i} in {rule_type.__name__} ({file_path}): {created_rule.model_dump_json(indent=2)}")
         except Exception as e:
             logger.error(f"Error processing row {i} in {rule_type.__name__} file {file_path}: {r.to_dict()}. Error: {e}. Skipping row.")
     
@@ -374,3 +374,40 @@ def load_optimization_rules(file_path: str, rule_type: Type[Union[CoverageDaysRu
     else:
         logger.debug(f"No {rule_type.__name__} rules were loaded from {file_path}.")
     return rules
+
+def load_sellin_ranking_dict(file_path: str, ean_col: str = 'ean_product', ranking_col: str = 'ranking') -> Dict[str, int]:
+    """
+    Loads sellin ranking data from a CSV file and returns a dictionary mapping EANs to their highest ranking.
+
+    Args:
+        file_path: Path to the sellin ranking CSV file.
+        ean_col: Name of the column containing EANs.
+        ranking_col: Name of the column containing sellin rankings.
+
+    Returns:
+        A dictionary mapping EAN (str) to its highest sellin ranking (int).
+        Returns an empty dictionary if the file is not found or no valid data is loaded.
+    """
+    logger.info(f"Loading sellin ranking data from: {file_path}")
+    try:
+        df = pd.read_csv(file_path, sep=';')
+    except FileNotFoundError:
+        logger.warning(f"Sellin ranking data file not found: {file_path}. Returning empty dictionary.")
+        return {}
+    except Exception as e:
+        logger.error(f"Error reading sellin ranking data file {file_path}: {e}")
+        raise
+
+    if not all(c in df.columns for c in [ean_col, ranking_col]):
+        logger.error(f"Required columns ('{ean_col}', '{ranking_col}') missing in sellin ranking file: {file_path}. Found: {df.columns.tolist()}")
+        raise ValueError(f"Required columns missing in {file_path}")
+
+    # Normalize EANs and convert ranking to numeric
+    df[ean_col] = df[ean_col].astype(str).str.lstrip('0').fillna('')
+    df[ranking_col] = pd.to_numeric(df[ranking_col], errors='coerce').fillna(0).astype(int) # Coerce errors to NaN, fill with 0, then convert to int
+
+    # Group by EAN and take the maximum ranking (higher ranking = better performance)
+    sellin_ranking_dict = df.groupby(ean_col)[ranking_col].max().to_dict()
+
+    logger.info(f"Loaded sellin rankings for {len(sellin_ranking_dict)} EANs from {file_path}.")
+    return sellin_ranking_dict

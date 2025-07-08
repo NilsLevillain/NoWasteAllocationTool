@@ -7,7 +7,6 @@ import sys
 import logging
 from io import StringIO
 
-# Add project root to sys.path to allow imports from backend
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
@@ -19,6 +18,7 @@ from backend.utils import (
     load_existing_stock_dict,
     load_demand_dict,
     load_optimization_rules,
+    load_sellin_ranking_dict, # New import
     _get_channel_id_from_row
 )
 from backend.schemas import (
@@ -53,18 +53,21 @@ class TestUtilsDataLoading(unittest.TestCase):
 
     # --- Tests for load_products_df ---
     def test_load_products_df_success(self):
-        csv_content = "product_gtin,operational_signature_label,operational_division,operational_axe_label,operational_sub_axe_label,operational_metier_label\nEAN1,BrandA,DivX,Axe1,Sub1,MetA\nEAN2,BrandB,DivY,Axe2,Sub2,MetB"
+        csv_content = "product_gtin;operational_signature_label;operational_division;operational_axe_label;operational_sub_axe_label;operational_metier_label;internal_product_code;product_description;unit_cost\n00000000000001;BrandA;DivX;Axe1;Sub1;MetA;SKU1;Desc1;10.5\nEAN2;BrandB;DivY;Axe2;Sub2;MetB;SKU2;Desc2;20.0"
         file_path = os.path.join(self.input_data_dir, 'products_ok.csv')
         with open(file_path, 'w') as f:
             f.write(csv_content)
 
         expected_data = {
-            'ean': ['EAN1', 'EAN2'],
-            'brand': ['BrandA', 'BrandB'],
-            'division': ['DivX', 'DivY'],
+            'ean': ['1', 'EAN2'],
+            'signature': ['BrandA', 'BrandB'],
+            'div': ['DivX', 'DivY'],
             'axe': ['Axe1', 'Axe2'],
-            'subaxis': ['Sub1', 'Sub2'],
-            'metier': ['MetA', 'MetB']
+            'subAxe': ['Sub1', 'Sub2'],
+            'metier': ['MetA', 'MetB'],
+            'sku': ['SKU1', 'SKU2'],
+            'description': ['Desc1', 'Desc2'],
+            'cogs': [10.5, 20.0]
         }
         expected_df = pd.DataFrame(expected_data).set_index('ean')
         
@@ -75,45 +78,80 @@ class TestUtilsDataLoading(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             load_products_df(os.path.join(self.input_data_dir, 'non_existent_products.csv'))
 
-    def test_load_products_df_missing_ean_column(self):
-        csv_content = "operational_signature_label,operational_division\nBrandA,DivX"
-        file_path = os.path.join(self.input_data_dir, 'products_no_ean.csv')
+    def test_load_products_df_missing_required_columns(self):
+        # Missing operational_division, operational_axe_label, etc.
+        csv_content = "product_gtin;operational_signature_label\nEAN1;BrandA"
+        file_path = os.path.join(self.input_data_dir, 'products_missing_cols.csv')
         with open(file_path, 'w') as f:
             f.write(csv_content)
-        with self.assertRaisesRegex(ValueError, "Required column 'product_gtin' not found"):
+        with self.assertRaisesRegex(ValueError, "Required column 'operational_division' not found"):
             load_products_df(file_path)
 
     def test_load_products_df_duplicate_eans(self):
-        csv_content = "product_gtin,operational_signature_label\nEAN1,BrandA\nEAN1,BrandX_ignored"
+        csv_content = "product_gtin;operational_signature_label;operational_division;operational_axe_label;operational_sub_axe_label;operational_metier_label;internal_product_code;product_description;unit_cost\nEAN1;BrandA;DivX;Axe1;Sub1;MetA;SKU1;Desc1;10.5\nEAN1;BrandX_ignored;DivY;Axe2;Sub2;MetB;SKU2;Desc2;20.0"
         file_path = os.path.join(self.input_data_dir, 'products_dup_ean.csv')
         with open(file_path, 'w') as f:
             f.write(csv_content)
         
-        expected_data = {'ean': ['EAN1'], 'brand': ['BrandA']}
+        expected_data = {
+            'ean': ['EAN1'],
+            'signature': ['BrandA'],
+            'div': ['DivX'],
+            'axe': ['Axe1'],
+            'subAxe': ['Sub1'],
+            'metier': ['MetA'],
+            'sku': ['SKU1'],
+            'description': ['Desc1'],
+            'cogs': [10.5]
+        }
         expected_df = pd.DataFrame(expected_data).set_index('ean')
         
         # Capture warnings
         with self.assertLogs(logger='backend.utils', level='WARNING') as cm:
-            result_df = load_products_df(file_path, ean_col='product_gtin', brand_col='operational_signature_label')
+            result_df = load_products_df(file_path)
         self.assertTrue(any("Duplicate EANs found" in message for message in cm.output))
         assert_frame_equal(result_df, expected_df, check_dtype=False)
 
     def test_load_products_df_empty_file(self):
         file_path = os.path.join(self.input_data_dir, 'products_empty.csv')
         with open(file_path, 'w') as f:
-            f.write("product_gtin,operational_signature_label\n") # Only header
+            f.write("product_gtin;operational_signature_label;operational_division;operational_axe_label;operational_sub_axe_label;operational_metier_label;internal_product_code;product_description;unit_cost\n") # Only header
         
         result_df = load_products_df(file_path)
         self.assertTrue(result_df.empty)
 
     def test_load_products_df_only_header(self):
-        csv_content = "product_gtin,operational_signature_label,operational_division"
+        csv_content = "product_gtin;operational_signature_label;operational_division;operational_axe_label;operational_sub_axe_label;operational_metier_label;internal_product_code;product_description;unit_cost"
         file_path = os.path.join(self.input_data_dir, 'products_header_only.csv')
         with open(file_path, 'w') as f:
             f.write(csv_content)
         
         result_df = load_products_df(file_path)
         self.assertTrue(result_df.empty)
+
+    def test_load_products_df_ean_normalization_and_cogs_conversion(self):
+        csv_content = "product_gtin;operational_signature_label;operational_division;operational_axe_label;operational_sub_axe_label;operational_metier_label;internal_product_code;product_description;unit_cost\n00000000000001;BrandA;DivX;Axe1;Sub1;MetA;SKU1;Desc1;10.5\n00000000000002;BrandB;DivY;Axe2;Sub2;MetB;SKU2;Desc2;invalid_cogs\n0;BrandC;DivZ;Axe3;Sub3;MetC;SKU3;Desc3;30"
+        file_path = os.path.join(self.input_data_dir, 'products_ean_norm.csv')
+        with open(file_path, 'w') as f:
+            f.write(csv_content)
+
+        expected_data = {
+            'ean': ['1', '2', ''], # '0' EAN becomes empty after stripping
+            'signature': ['BrandA', 'BrandB', 'BrandC'],
+            'div': ['DivX', 'DivY', 'DivZ'],
+            'axe': ['Axe1', 'Axe2', 'Axe3'],
+            'subAxe': ['Sub1', 'Sub2', 'Sub3'],
+            'metier': ['MetA', 'MetB', 'MetC'],
+            'sku': ['SKU1', 'SKU2', 'SKU3'],
+            'description': ['Desc1', 'Desc2', 'Desc3'],
+            'cogs': [10.5, 0.0, 30.0] # invalid_cogs becomes 0.0
+        }
+        expected_df = pd.DataFrame(expected_data)
+        # Filter out rows where EAN became empty after stripping (e.g. if it was just "0" or "00")
+        expected_df = expected_df[expected_df['ean'] != ''].set_index('ean')
+        
+        result_df = load_products_df(file_path)
+        assert_frame_equal(result_df, expected_df, check_dtype=False)
 
 
     # --- Tests for _get_channel_id_from_row ---
@@ -219,62 +257,88 @@ class TestUtilsDataLoading(unittest.TestCase):
 
     # --- Tests for load_inventory_df ---
     def test_load_inventory_df_success(self):
-        csv_content = "ean_code,StockToAllocate\nEAN1,100\nEAN2,50\nEAN1,20" # EAN1 has multiple entries
+        csv_content = (
+            "ean_code;StockToAllocate;AvailableStock;plant;plant_description;FlagExcess6months;FlagExcess12months\n"
+            "EAN1;100;90;PL1;Plant A;0;0\n"
+            "EAN2;50;45;PL1;Plant A;0;0\n"
+            "EAN1;20;15;PL2;Plant B;1;0\n" # EAN1 has multiple entries, different plant
+            "EAN3;30;25;PL1;Plant A;1;1\n" # Excess 6 & 12
+            "EAN4;40;35;PL2;Plant B;1;0\n" # Excess 6
+            "EAN5;60;55;PL1;Plant A;0;1\n" # Excess 12
+            "EAN6;70;65;PL2;Plant B;0;0\n" # Obsolete (default)
+        )
         file_path = os.path.join(self.input_data_dir, 'inventory_ok.csv')
         with open(file_path, 'w') as f:
             f.write(csv_content)
 
         expected_data = {
-            'product_ean': ['EAN1', 'EAN2'],
-            'quantity': [120, 50] # EAN1 quantities should be summed
+            'product_ean': ['EAN1', 'EAN1', 'EAN2', 'EAN3', 'EAN4', 'EAN5', 'EAN6'],
+            'plant': ['PL1', 'PL2', 'PL1', 'PL1', 'PL2', 'PL1', 'PL2'],
+            'quantity': [100, 20, 50, 30, 40, 60, 70], # Summed by EAN-Plant, not total EAN
+            'available_stock': [90, 15, 45, 25, 35, 55, 65],
+            'stockOrigin': ['Plant A', 'Plant B', 'Plant A', 'Plant A', 'Plant B', 'Plant A', 'Plant B'],
+            'flagExcess6months': [0, 1, 0, 1, 1, 0, 0],
+            'flagExcess12months': [0, 0, 0, 1, 0, 1, 0],
+            'bad_stock_type': ['Obsolete', 'Excess 6 months', 'Obsolete', 'Excess 6 & 12 months', 'Excess 6 months', 'Excess 12 months', 'Obsolete']
         }
         expected_df = pd.DataFrame(expected_data)
-        # Sort by product_ean for consistent comparison as groupby might change order
-        expected_df = expected_df.sort_values(by='product_ean').reset_index(drop=True)
+        # Sort by product_ean and plant for consistent comparison
+        expected_df = expected_df.sort_values(by=['product_ean', 'plant']).reset_index(drop=True)
         
         result_df = load_inventory_df(file_path)
-        result_df = result_df.sort_values(by='product_ean').reset_index(drop=True)
+        result_df = result_df.sort_values(by=['product_ean', 'plant']).reset_index(drop=True)
         assert_frame_equal(result_df, expected_df, check_dtype=False)
 
     def test_load_inventory_df_file_not_found(self):
         with self.assertRaises(FileNotFoundError):
             load_inventory_df(os.path.join(self.input_data_dir, 'non_existent_inventory.csv'))
 
-    def test_load_inventory_df_missing_columns(self):
-        csv_content = "ean_code\nEAN1"
+    def test_load_inventory_df_missing_required_columns(self):
+        csv_content = "ean_code;StockToAllocate\nEAN1;100" # Missing available_stock, plant, flags
         file_path = os.path.join(self.input_data_dir, 'inventory_missing_cols.csv')
         with open(file_path, 'w') as f:
             f.write(csv_content)
-        with self.assertRaisesRegex(ValueError, "Required columns missing"):
+        with self.assertRaisesRegex(ValueError, "Required columns \\['AvailableStock', 'plant', 'plant_description', 'FlagExcess6months', 'FlagExcess12months'\\] missing"):
             load_inventory_df(file_path)
 
-    def test_load_inventory_df_invalid_quantity(self):
-        csv_content = "ean_code,StockToAllocate\nEAN1,100\nEAN2,fifty\nEAN3,30"
+    def test_load_inventory_df_invalid_quantity_and_flags(self):
+        csv_content = (
+            "ean_code;StockToAllocate;AvailableStock;plant;plant_description;FlagExcess6months;FlagExcess12months\n"
+            "EAN1;100;90;PL1;Plant A;0;0\n"
+            "EAN2;fifty;45;PL1;Plant A;invalid;0\n" # Invalid qty, invalid flag
+            "EAN3;30;25;PL1;Plant A;1;invalid\n" # Invalid flag
+        )
         file_path = os.path.join(self.input_data_dir, 'inventory_invalid_qty.csv')
         with open(file_path, 'w') as f:
             f.write(csv_content)
 
         expected_data = {
             'product_ean': ['EAN1', 'EAN2', 'EAN3'],
-            'quantity': [100, 0, 30] # 'fifty' coerced to 0
+            'plant': ['PL1', 'PL1', 'PL1'],
+            'quantity': [100, 0, 30], # 'fifty' coerced to 0
+            'available_stock': [90, 45, 25],
+            'stockOrigin': ['Plant A', 'Plant A', 'Plant A'],
+            'flagExcess6months': [0, 0, 1], # 'invalid' coerced to 0
+            'flagExcess12months': [0, 0, 0], # 'invalid' coerced to 0
+            'bad_stock_type': ['Obsolete', 'Obsolete', 'Excess 6 months'] # Based on coerced flags
         }
-        expected_df = pd.DataFrame(expected_data).sort_values(by='product_ean').reset_index(drop=True)
+        expected_df = pd.DataFrame(expected_data).sort_values(by=['product_ean', 'plant']).reset_index(drop=True)
         
-        result_df = load_inventory_df(file_path).sort_values(by='product_ean').reset_index(drop=True)
+        result_df = load_inventory_df(file_path).sort_values(by=['product_ean', 'plant']).reset_index(drop=True)
         assert_frame_equal(result_df, expected_df, check_dtype=False)
 
     def test_load_inventory_df_empty_file(self):
         file_path = os.path.join(self.input_data_dir, 'inventory_empty.csv')
         with open(file_path, 'w') as f:
-            f.write("ean_code,StockToAllocate\n")
+            f.write("ean_code;StockToAllocate;AvailableStock;plant;plant_description;FlagExcess6months;FlagExcess12months\n")
 
         result_df = load_inventory_df(file_path)
-        self.assertTrue(result_df.empty or len(result_df[result_df['quantity'] > 0]) == 0)
+        self.assertTrue(result_df.empty) # Should be empty, not just quantity > 0
 
     # --- Tests for load_existing_stock_dict ---
     def test_load_existing_stock_dict_success(self):
-        instore_content = "barcode,store_code,physical_quantity\nEAN1,CH1,10\nEAN2,CH1,5\nEAN1,CH2,7"
-        intransit_content = "ean_material_code,store_code,order_quantity\nEAN1,CH1,3\nEAN3,CH2,12"
+        instore_content = "barcode;store_code;physical_quantity\nEAN1;CH1;10\nEAN2;CH1;5\nEAN1;CH2;7"
+        intransit_content = "ean_material_code;store_code;order_quantity\nEAN1;CH1;3\nEAN3;CH2;12"
         
         instore_file_path = os.path.join(self.input_data_dir, 'instore_stock.csv')
         intransit_file_path = os.path.join(self.input_data_dir, 'intransit_stock.csv')
@@ -294,7 +358,7 @@ class TestUtilsDataLoading(unittest.TestCase):
         self.assertEqual(result_stock, expected_stock)
 
     def test_load_existing_stock_dict_one_file_not_found(self):
-        instore_content = "barcode,store_code,physical_quantity\nEAN1,CH1,10"
+        instore_content = "barcode;store_code;physical_quantity\nEAN1;CH1;10"
         instore_file_path = os.path.join(self.input_data_dir, 'instore_stock_only.csv')
         with open(instore_file_path, 'w') as f:
             f.write(instore_content)
@@ -305,8 +369,8 @@ class TestUtilsDataLoading(unittest.TestCase):
             load_existing_stock_dict(os.path.join(self.input_data_dir, 'non_existent_instore.csv'), instore_file_path) # Using instore_file_path as a dummy for intransit
 
     def test_load_existing_stock_dict_missing_cols_instore(self):
-        instore_content = "barcode,physical_quantity\nEAN1,10" # Missing store_code
-        intransit_content = "ean_material_code,store_code,order_quantity\nEAN1,CH1,3"
+        instore_content = "barcode;physical_quantity\nEAN1;10" # Missing store_code
+        intransit_content = "ean_material_code;store_code;order_quantity\nEAN1;CH1;3"
         instore_file_path = os.path.join(self.input_data_dir, 'instore_missing_cols.csv')
         intransit_file_path = os.path.join(self.input_data_dir, 'intransit_ok_for_missing.csv')
         with open(instore_file_path, 'w') as f:
@@ -318,8 +382,8 @@ class TestUtilsDataLoading(unittest.TestCase):
             load_existing_stock_dict(instore_file_path, intransit_file_path)
 
     def test_load_existing_stock_dict_missing_cols_intransit(self):
-        instore_content = "barcode,store_code,physical_quantity\nEAN1,CH1,10"
-        intransit_content = "ean_material_code,order_quantity\nEAN1,3" # Missing store_code
+        instore_content = "barcode;store_code;physical_quantity\nEAN1;CH1;10"
+        intransit_content = "ean_material_code;order_quantity\nEAN1;3" # Missing store_code
         instore_file_path = os.path.join(self.input_data_dir, 'instore_ok_for_missing.csv')
         intransit_file_path = os.path.join(self.input_data_dir, 'intransit_missing_cols.csv')
         with open(instore_file_path, 'w') as f:
@@ -331,8 +395,8 @@ class TestUtilsDataLoading(unittest.TestCase):
             load_existing_stock_dict(instore_file_path, intransit_file_path)
 
     def test_load_existing_stock_dict_empty_files(self):
-        instore_content = "barcode,store_code,physical_quantity\n"
-        intransit_content = "ean_material_code,store_code,order_quantity\n"
+        instore_content = "barcode;store_code;physical_quantity\n"
+        intransit_content = "ean_material_code;store_code;order_quantity\n"
         instore_file_path = os.path.join(self.input_data_dir, 'instore_empty.csv')
         intransit_file_path = os.path.join(self.input_data_dir, 'intransit_empty.csv')
         with open(instore_file_path, 'w') as f:
@@ -345,7 +409,7 @@ class TestUtilsDataLoading(unittest.TestCase):
 
     # --- Tests for load_demand_dict ---
     def test_load_demand_dict_success(self):
-        csv_content = "barcode,store_code,total_items_weekly\nEAN1,CH1,50\nEAN2,CH1,30\nEAN1,CH1,10" # Duplicate EAN1,CH1
+        csv_content = "barcode;store_code;total_items_weekly\nEAN1;CH1;50\nEAN2;CH1;30\nEAN1;CH1;10" # Duplicate EAN1,CH1
         file_path = os.path.join(self.input_data_dir, 'demand_ok.csv')
         with open(file_path, 'w') as f:
             f.write(csv_content)
@@ -365,7 +429,7 @@ class TestUtilsDataLoading(unittest.TestCase):
         self.assertTrue(any("Demand data file not found" in message for message in cm.output))
 
     def test_load_demand_dict_missing_columns(self):
-        csv_content = "barcode,total_items_weekly\nEAN1,50" # Missing store_code
+        csv_content = "barcode;total_items_weekly\nEAN1;50" # Missing store_code
         file_path = os.path.join(self.input_data_dir, 'demand_missing_cols.csv')
         with open(file_path, 'w') as f:
             f.write(csv_content)
@@ -373,7 +437,7 @@ class TestUtilsDataLoading(unittest.TestCase):
             load_demand_dict(file_path)
 
     def test_load_demand_dict_invalid_qty(self):
-        csv_content = "barcode,store_code,total_items_weekly\nEAN1,CH1,50\nEAN2,CH1,thirty"
+        csv_content = "barcode;store_code;total_items_weekly\nEAN1;CH1;50\nEAN2;CH1;thirty"
         file_path = os.path.join(self.input_data_dir, 'demand_invalid_qty.csv')
         with open(file_path, 'w') as f:
             f.write(csv_content)
@@ -387,7 +451,7 @@ class TestUtilsDataLoading(unittest.TestCase):
     def test_load_demand_dict_empty_file(self):
         file_path = os.path.join(self.input_data_dir, 'demand_empty.csv')
         with open(file_path, 'w') as f:
-            f.write("barcode,store_code,total_items_weekly\n")
+            f.write("barcode;store_code;total_items_weekly\n")
         result_demand = load_demand_dict(file_path)
         self.assertEqual(result_demand, {})
 
@@ -576,5 +640,16 @@ class TestUtilsDataLoading(unittest.TestCase):
         result_rules = load_optimization_rules(file_path, CoverageDaysRule, **column_mappings)
         self.assertEqual(result_rules, [])
 
-if __name__ == '__main__':
-    unittest.main()
+    # --- Tests for load_sellin_ranking_dict ---
+    def test_load_sellin_ranking_dict_success(self):
+        csv_content = "ean_product;division;ranking\nEAN1;DivA;90\nEAN2;DivB;80\nEAN1;DivA;95" # EAN1 has duplicate, take max
+        file_path = os.path.join(self.input_data_dir, 'sellin_ok.csv')
+        with open(file_path, 'w') as f:
+            f.write(csv_content)
+
+        expected_ranking = {
+            'EAN1': 95, # Max of 90, 95
+            'EAN2': 80
+        }
+        result_ranking = load_sellin_ranking_dict(file_path)
+        self.assertEqual(result_ranking, expected_ranking)
