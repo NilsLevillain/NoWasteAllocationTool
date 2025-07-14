@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from backend.solver import (
     calculate_abc_classification_and_new_skus,
     optimize_allocation,
+    count_existing_skus_per_assortment_group,
 )
 from backend.schemas import (
     OptimizationParameters, CoverageDaysRule, OutletSKUCapacityRule,
@@ -970,7 +971,8 @@ class TestOutletAssortmentConstraints:
         
         model, status, results = optimize_allocation(
             sample_products_df, sample_channels_df, sample_inventory_df,
-            sample_demand_dict, params, sample_existing_stock_dict, abc_map, sample_sellin_ranking_dict
+            sample_demand_dict, params, sample_existing_stock_dict, abc_map, sample_sellin_ranking_dict,
+            existing_skus_per_assortment_group={} # No existing SKUs
         )
         
         assert status == 'Optimal'
@@ -1017,7 +1019,8 @@ class TestOutletAssortmentConstraints:
         
         model, status, results = optimize_allocation(
             sample_products_df, channels_df, sample_inventory_df,
-            demand_dict, params, sample_existing_stock_dict, abc_map, sample_sellin_ranking_dict
+            demand_dict, params, sample_existing_stock_dict, abc_map, sample_sellin_ranking_dict,
+            existing_skus_per_assortment_group={} # No existing SKUs
         )
         
         assert status == 'Optimal'
@@ -1061,7 +1064,8 @@ class TestNewSKUPushConstraints:
         
         model, status, results = optimize_allocation(
             sample_products_df, sample_channels_df, inventory_df,
-            sample_demand_dict, params, sample_existing_stock_dict, abc_map, sample_sellin_ranking_dict
+            sample_demand_dict, params, sample_existing_stock_dict, abc_map, sample_sellin_ranking_dict,
+            existing_skus_per_assortment_group={}
         )
         
         assert status == 'Optimal'
@@ -1090,7 +1094,8 @@ class TestNewSKUPushConstraints:
         
         model, status, results = optimize_allocation(
             sample_products_df, sample_channels_df, sample_inventory_df,
-            sample_demand_dict, params, sample_existing_stock_dict, abc_map, sample_sellin_ranking_dict
+            sample_demand_dict, params, sample_existing_stock_dict, abc_map, sample_sellin_ranking_dict,
+            existing_skus_per_assortment_group={}
         )
         
         assert status == 'Optimal'
@@ -1120,7 +1125,8 @@ class TestNewSKUPushConstraints:
         
         model, status, results = optimize_allocation(
             sample_products_df, sample_channels_df, sample_inventory_df,
-            sample_demand_dict, params, sample_existing_stock_dict, abc_map, sample_sellin_ranking_dict
+            sample_demand_dict, params, sample_existing_stock_dict, abc_map, sample_sellin_ranking_dict,
+            existing_skus_per_assortment_group={}
         )
         
         assert status == 'Optimal'
@@ -1166,7 +1172,8 @@ class TestMultiPlantAllocation:
         
         model, status, results = optimize_allocation(
             sample_products_df, sample_channels_df, inventory_df,
-            demand_dict, params, sample_existing_stock_dict, abc_map, sample_sellin_ranking_dict
+            demand_dict, params, sample_existing_stock_dict, abc_map, sample_sellin_ranking_dict,
+            existing_skus_per_assortment_group={}
         )
         
         assert status == 'Optimal'
@@ -1212,7 +1219,8 @@ class TestMultiPlantAllocation:
         
         model, status, results = optimize_allocation(
             sample_products_df, sample_channels_df, inventory_df,
-            demand_dict, params, sample_existing_stock_dict, abc_map, sample_sellin_ranking_dict
+            demand_dict, params, sample_existing_stock_dict, abc_map, sample_sellin_ranking_dict,
+            existing_skus_per_assortment_group={}
         )
         
         assert status == 'Optimal'
@@ -1270,7 +1278,8 @@ class TestConstraintConflicts:
         
         model, status, results = optimize_allocation(
             sample_products_df, sample_channels_df, inventory_df,
-            demand_dict, params, {}, abc_map, sample_sellin_ranking_dict
+            demand_dict, params, {}, abc_map, sample_sellin_ranking_dict,
+            existing_skus_per_assortment_group={}
         )
         
         assert status == 'Optimal'  # Should still be solvable
@@ -1320,7 +1329,8 @@ class TestConstraintConflicts:
         
         model, status, results = optimize_allocation(
             sample_products_df, sample_channels_df, sample_inventory_df,
-            sample_demand_dict, params, sample_existing_stock_dict, abc_map, sample_sellin_ranking_dict
+            sample_demand_dict, params, sample_existing_stock_dict, abc_map, sample_sellin_ranking_dict,
+            existing_skus_per_assortment_group={}
         )
         
         # Should either be optimal with minimal allocation or infeasible
@@ -1373,7 +1383,8 @@ class TestEdgeCasesAndValidation:
         
         model, status, results = optimize_allocation(
             sample_products_df, sample_channels_df, sample_inventory_df,
-            sample_demand_dict, params, sample_existing_stock_dict, abc_map, sample_sellin_ranking_dict
+            sample_demand_dict, params, sample_existing_stock_dict, abc_map, sample_sellin_ranking_dict,
+            existing_skus_per_assortment_group={}
         )
         
         assert status == 'Optimal'
@@ -1395,7 +1406,8 @@ class TestEdgeCasesAndValidation:
         model, status, results = optimize_allocation(
             sample_products_df, sample_channels_df, sample_inventory_df,
             demand_dict, basic_optimization_parameters, 
-            sample_existing_stock_dict, abc_map, sample_sellin_ranking_dict
+            sample_existing_stock_dict, abc_map, sample_sellin_ranking_dict,
+            existing_skus_per_assortment_group={}
         )
         
         # Should still be optimal (allocation driven by scoring, not demand)
@@ -1412,7 +1424,8 @@ class TestEdgeCasesAndValidation:
         model, status, results = optimize_allocation(
             sample_products_df, sample_channels_df, inventory_df,
             sample_demand_dict, basic_optimization_parameters, 
-            sample_existing_stock_dict, abc_map, sample_sellin_ranking_dict
+            sample_existing_stock_dict, abc_map, sample_sellin_ranking_dict,
+            existing_skus_per_assortment_group={}
         )
         
         # Should be optimal with no results
@@ -1533,7 +1546,8 @@ class TestPerformanceAndScale:
         
         model, status, results = optimize_allocation(
             products_df, channels_df, inventory_df,
-            demand_dict, params, {}, abc_map, sellin_ranking_dict
+            demand_dict, params, {}, abc_map, sellin_ranking_dict,
+            existing_skus_per_assortment_group={}
         )
         
         end_time = time.time()
@@ -1560,7 +1574,8 @@ class TestResultValidation:
         model, status, results = optimize_allocation(
             sample_products_df, sample_channels_df, sample_inventory_df,
             sample_demand_dict, basic_optimization_parameters, 
-            sample_existing_stock_dict, abc_map, sample_sellin_ranking_dict
+            sample_existing_stock_dict, abc_map, sample_sellin_ranking_dict,
+            existing_skus_per_assortment_group={}
         )
         
         assert status == 'Optimal'
@@ -1598,7 +1613,8 @@ class TestResultValidation:
         model, status, results = optimize_allocation(
             sample_products_df, sample_channels_df, sample_inventory_df,
             sample_demand_dict, basic_optimization_parameters, 
-            sample_existing_stock_dict, abc_map, sample_sellin_ranking_dict
+            sample_existing_stock_dict, abc_map, sample_sellin_ranking_dict,
+            existing_skus_per_assortment_group={}
         )
         
         assert status == 'Optimal'
@@ -1612,6 +1628,182 @@ class TestResultValidation:
 
 
 
+
+
+# =============================================================================
+# NEW TEST SUITE: count_existing_skus_per_assortment_group
+# =============================================================================
+
+class TestCountExistingSkus:
+
+    @pytest.fixture
+    def products_for_assortment_test(self):
+        """Products with clear assortment groups."""
+        return pd.DataFrame({
+            'metier': ['Face', 'Face', 'Eyes', 'Face'],
+            'subAxe': ['Foundation', 'Foundation', 'Mascara', 'Cleanser'],
+            'signature': ['Loreal', 'Loreal', 'Maybelline', 'Loreal']
+        }, index=['EAN1', 'EAN2', 'EAN3', 'EAN4'])
+
+    def test_count_existing_skus_success(self, products_for_assortment_test):
+        """Test basic functionality of counting existing SKUs."""
+        in_store_inventory_df = pd.DataFrame({
+            'barcode': ['EAN1', 'EAN2', 'EAN3', 'EAN4'],
+            'store_code': ['OUTLET1', 'OUTLET1', 'OUTLET1', 'OUTLET2'],
+            'physical_quantity': [10, 5, 8, 12]
+        })
+        outlet_channels = ['OUTLET1', 'OUTLET2']
+        
+        result = count_existing_skus_per_assortment_group(
+            in_store_inventory_df, products_for_assortment_test, outlet_channels
+        )
+        
+        expected = {
+            ('OUTLET1', 'Face', 'Foundation', 'Loreal'): 2, # EAN1, EAN2
+            ('OUTLET1', 'Eyes', 'Mascara', 'Maybelline'): 1, # EAN3
+            ('OUTLET2', 'Face', 'Cleanser', 'Loreal'): 1, # EAN4
+        }
+        
+        assert result == expected
+
+    def test_count_existing_skus_no_outlet_stock(self, products_for_assortment_test):
+        """Test case where there is no stock in any outlet channels."""
+        in_store_inventory_df = pd.DataFrame({
+            'barcode': ['EAN1'],
+            'store_code': ['STORE_NORMAL'], # Not an outlet
+            'physical_quantity': [10]
+        })
+        outlet_channels = ['OUTLET1', 'OUTLET2']
+        
+        result = count_existing_skus_per_assortment_group(
+            in_store_inventory_df, products_for_assortment_test, outlet_channels
+        )
+        
+        assert result == {}
+
+    def test_count_existing_skus_empty_inventory(self, products_for_assortment_test):
+        """Test case with an empty inventory DataFrame."""
+        in_store_inventory_df = pd.DataFrame(columns=['barcode', 'store_code', 'physical_quantity'])
+        outlet_channels = ['OUTLET1']
+        
+        result = count_existing_skus_per_assortment_group(
+            in_store_inventory_df, products_for_assortment_test, outlet_channels
+        )
+        
+        assert result == {}
+
+    def test_count_existing_skus_zero_quantity(self, products_for_assortment_test):
+        """Test that items with zero quantity are ignored."""
+        in_store_inventory_df = pd.DataFrame({
+            'barcode': ['EAN1', 'EAN2'],
+            'store_code': ['OUTLET1', 'OUTLET1'],
+            'physical_quantity': [10, 0] # EAN2 has zero quantity
+        })
+        outlet_channels = ['OUTLET1']
+        
+        result = count_existing_skus_per_assortment_group(
+            in_store_inventory_df, products_for_assortment_test, outlet_channels
+        )
+        
+        expected = {
+            ('OUTLET1', 'Face', 'Foundation', 'Loreal'): 1, # Only EAN1
+        }
+        assert result == expected
+
+# =============================================================================
+# NEW TEST SUITE: Outlet Assortment with Existing Stock
+# =============================================================================
+
+class TestOutletAssortmentWithExistingStock:
+
+    @pytest.fixture
+    def products_for_assortment_constraint(self):
+        """Products for testing the assortment constraint with existing stock."""
+        return pd.DataFrame({
+            'metier': ['Face', 'Face', 'Face'],
+            'subAxe': ['Foundation', 'Foundation', 'Foundation'],
+            'signature': ['Loreal', 'Loreal', 'Loreal'],
+            'division': ['LuxDiv', 'LuxDiv', 'LuxDiv'],
+            'axe': ['Skincare', 'Skincare', 'Skincare']
+        }, index=['EAN1', 'EAN2', 'EAN3'])
+
+    def test_assortment_constraint_with_existing_stock(self, products_for_assortment_constraint, sample_channels_df, sample_sellin_ranking_dict):
+        """Test that the assortment constraint correctly considers existing stock."""
+        
+        # EAN1 already exists in OUTLET01
+        existing_skus_map = {('OUTLET01', 'Face', 'Foundation', 'Loreal'): 1}
+        
+        # EAN2 and EAN3 are available for allocation
+        inventory_df = pd.DataFrame({
+            'product_ean': ['EAN2', 'EAN3'],
+            'plant': ['PLANT_FR', 'PLANT_FR'],
+            'quantity': [100, 100],
+            'available_stock': [100, 100]
+        })
+        
+        demand_dict = {('EAN2', 'OUTLET01'): 50, ('EAN3', 'OUTLET01'): 50}
+        abc_map = {('EAN2', 'OUTLET01'): 'A', ('EAN3', 'OUTLET01'): 'A'}
+        
+        params = OptimizationParameters(
+            seasonality_coefficient=1.0, restricted_brands_for_donation=[],
+            coverage_days_rules=[CoverageDaysRule(channel_id='outlet', abc_class='A', coverage_days=30)],
+            outlet_sku_capacity_rules=[], push_new_sku_rules=[],
+            outlet_assortment_rules=[
+                OutletAssortmentRule(metier='Face', subaxis='Foundation', brand='Loreal', max_skus=2) # Max 2 SKUs
+            ]
+        )
+        
+        model, status, results = optimize_allocation(
+            products_for_assortment_constraint, sample_channels_df, inventory_df,
+            demand_dict, params, {}, abc_map, sample_sellin_ranking_dict,
+            existing_skus_per_assortment_group=existing_skus_map
+        )
+        
+        assert status == 'Optimal'
+        
+        # With 1 existing SKU and a limit of 2, only 1 new SKU should be allocated.
+        allocated_skus = {r['product_sku'] for r in results if r['channel_id'] == 'OUTLET01'}
+        
+        assert len(allocated_skus) <= 1
+
+    def test_assortment_constraint_blocks_allocation_when_full(self, products_for_assortment_constraint, sample_channels_df, sample_sellin_ranking_dict):
+        """Test that no new SKUs are allocated if the assortment is already full."""
+        
+        # EAN1 and EAN_EXISTING already exist in OUTLET01, filling the capacity of 2
+        existing_skus_map = {('OUTLET01', 'Face', 'Foundation', 'Loreal'): 2}
+        
+        # EAN2 and EAN3 are available for allocation
+        inventory_df = pd.DataFrame({
+            'product_ean': ['EAN2', 'EAN3'],
+            'plant': ['PLANT_FR', 'PLANT_FR'],
+            'quantity': [100, 100],
+            'available_stock': [100, 100]
+        })
+        
+        demand_dict = {('EAN2', 'OUTLET01'): 50, ('EAN3', 'OUTLET01'): 50}
+        abc_map = {('EAN2', 'OUTLET01'): 'A', ('EAN3', 'OUTLET01'): 'A'}
+        
+        params = OptimizationParameters(
+            seasonality_coefficient=1.0, restricted_brands_for_donation=[],
+            coverage_days_rules=[CoverageDaysRule(channel_id='outlet', abc_class='A', coverage_days=30)],
+            outlet_sku_capacity_rules=[], push_new_sku_rules=[],
+            outlet_assortment_rules=[
+                OutletAssortmentRule(metier='Face', subaxis='Foundation', brand='Loreal', max_skus=2) # Max 2 SKUs
+            ]
+        )
+        
+        model, status, results = optimize_allocation(
+            products_for_assortment_constraint, sample_channels_df, inventory_df,
+            demand_dict, params, {}, abc_map, sample_sellin_ranking_dict,
+            existing_skus_per_assortment_group=existing_skus_map
+        )
+        
+        assert status == 'Optimal'
+        
+        # With 2 existing SKUs and a limit of 2, no new SKUs should be allocated.
+        allocated_skus = {r['product_sku'] for r in results if r['channel_id'] == 'OUTLET01'}
+        
+        assert len(allocated_skus) == 0
 
 
 if __name__ == '__main__':

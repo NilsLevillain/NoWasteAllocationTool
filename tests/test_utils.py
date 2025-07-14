@@ -653,3 +653,6 @@ class TestUtilsDataLoading(unittest.TestCase):
         }
         result_ranking = load_sellin_ranking_dict(file_path)
         self.assertEqual(result_ranking, expected_ranking)
+
+if __name__ == '__main__':
+    unittest.main()

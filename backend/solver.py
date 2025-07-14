@@ -186,9 +186,103 @@ def calculate_abc_classification_and_new_skus(
     logger.info(f"Finished ABC classification. Total product-channel pairs processed: {len(product_channel_abc_map)}.")
     return product_channel_abc_map
 
+def count_existing_skus_per_assortment_group(
+    in_store_inventory_df: pd.DataFrame,
+    products_df: pd.DataFrame,
+    outlet_channels: list
+) -> dict:
+    """
+    Counts the number of unique existing SKUs (EANs) per outlet assortment group.
+    An assortment group is defined by (outlet, metier, subaxis, brand).
+
+    Args:
+        in_store_inventory_df (pd.DataFrame): DataFrame with in-store inventory,
+                                              expected columns: 'barcode', 'store_code', 'physical_quantity'.
+        products_df (pd.DataFrame): DataFrame with product master data, indexed by EAN,
+                                    expected columns: 'operational_metier_label', 'operational_sub_axe_label',
+                                    'operational_signature_label'.
+        outlet_channels (list): List of channel IDs identified as 'outlet' channels.
+
+    Returns:
+        dict: A dictionary where keys are (outlet_id, metier, subaxis, brand) tuples
+              and values are the count of unique existing SKUs in that group.
+    """
+    logger.info("Starting calculation of existing SKUs per assortment group.")
+    existing_skus_count_map = defaultdict(int)
+
+    if in_store_inventory_df.empty or products_df.empty or not outlet_channels:
+        logger.warning("One or more input DataFrames/lists are empty. Returning empty existing SKUs map.")
+        return existing_skus_count_map
+
+    # 1. Filter in-store inventory for positive physical quantity and outlet channels
+    # Ensure 'barcode' and 'store_code' are strings and 'physical_quantity' is numeric
+    in_store_inventory_df['barcode'] = in_store_inventory_df['barcode'].astype(str).str.lstrip('0').fillna('')
+    in_store_inventory_df['store_code'] = in_store_inventory_df['store_code'].astype(str)
+    in_store_inventory_df['physical_quantity'] = pd.to_numeric(in_store_inventory_df['physical_quantity'], errors='coerce').fillna(0)
+
+    # Filter out invalid barcodes and non-positive quantities
+    valid_stocked_inventory = in_store_inventory_df[
+        (in_store_inventory_df['barcode'] != '') &
+        (in_store_inventory_df['physical_quantity'] > 0)
+    ].copy() # Use .copy() to avoid SettingWithCopyWarning
+
+    # Filter for outlet channels
+    outlet_stocked_inventory = valid_stocked_inventory[
+        valid_stocked_inventory['store_code'].isin(outlet_channels)
+    ]
+
+    if outlet_stocked_inventory.empty:
+        logger.info("No existing stock found in outlet channels. Returning empty existing SKUs map.")
+        return existing_skus_count_map
+
+    # 2. Merge with products_df to get metier, subaxis, brand for each EAN
+    # Ensure products_df index (EAN) is string for merging
+    products_df.index = products_df.index.astype(str)
+    
+    # Select relevant columns from products_df for merging
+    product_info_for_merge = products_df[[
+        'metier', 'subAxe', 'signature'
+    ]].copy()
+    product_info_for_merge.index.name = 'barcode' # Rename index to match 'barcode' column for merge
+
+    merged_df = pd.merge(
+        outlet_stocked_inventory,
+        product_info_for_merge,
+        on='barcode',
+        how='inner'
+    )
+
+    if merged_df.empty:
+        logger.warning("No matching product master data for existing outlet stock. Returning empty existing SKUs map.")
+        return existing_skus_count_map
+
+    # 3. Group by (outlet, metier, subaxis, brand) and count unique EANs
+    # Ensure grouping columns are strings and handle potential NaNs from merge
+    merged_df['store_code'] = merged_df['store_code'].astype(str)
+    merged_df['metier'] = merged_df['metier'].astype(str).fillna('UNKNOWN_METIER')
+    merged_df['subAxe'] = merged_df['subAxe'].astype(str).fillna('UNKNOWN_SUBAXIS')
+    merged_df['signature'] = merged_df['signature'].astype(str).fillna('UNKNOWN_BRAND')
+
+    # Group by the assortment dimensions and count unique barcodes
+    grouped_counts = merged_df.groupby([
+        'store_code',
+        'metier',
+        'subAxe',
+        'signature'
+    ])['barcode'].nunique()
+
+    # Convert to dictionary
+    existing_skus_count_map = grouped_counts.to_dict()
+
+    logger.info(f"Finished calculating existing SKUs per assortment group. Found {len(existing_skus_count_map)} groups with existing SKUs.")
+    logger.debug(f"Existing SKUs per assortment group: {existing_skus_count_map}")
+    return existing_skus_count_map
+
+
 def optimize_allocation(products_df: pd.DataFrame, channels_df: pd.DataFrame, inventory_df: pd.DataFrame,
                         demand_dict: dict, parameters: OptimizationParameters, existing_stock_dict: dict,
-                        product_channel_abc_map: dict, sellin_ranking_dict: dict):
+                        product_channel_abc_map: dict, sellin_ranking_dict: dict,
+                        existing_skus_per_assortment_group: dict): # New parameter
     logger.info("Starting inventory allocation optimization.")
     logger.debug(f"Number of products: {len(products_df)}, Number of channels: {len(channels_df)}")
     logger.debug(f"Optimization Parameters: {parameters}")
@@ -390,17 +484,33 @@ def optimize_allocation(products_df: pd.DataFrame, channels_df: pd.DataFrame, in
                                 model += x[p_ean, pl_specific, dc_channel] == 0, f"Restricted_Brand_{products_df.loc[p_ean].get('brand')}_P{p_ean}_Pl{pl_specific}_C{dc_channel}"
                                 logger.debug(f"Restricted brand {products_df.loc[p_ean].get('brand')} for P:{p_ean} Pl:{pl_specific} in donation channel {dc_channel}.")
     
-    logger.info("Adding outlet assortment constraints (using y_ean_channel).")
+    logger.info("Adding outlet assortment constraints (using y_ean_channel and existing stock).")
     for c_out in outlet_channels: 
         if c_out not in channels: 
             logger.warning(f"Outlet channel {c_out} from outlet_channels list not in main channels list. Skipping assortment rules for it.")
             continue 
         for (metier, subaxis, brand), group_products_eans in products_by_outlet_assortment_group.items(): # group_products_eans contains EANs
-            max_skus = outlet_assortment_dict.get((metier, subaxis, brand)) 
-            if max_skus is not None and max_skus >= 0:
-                # Sum over y_ean_channel for EANs in this group
-                model += pulp.lpSum(y_ean_channel[pg_ean, c_out] for pg_ean in group_products_eans if pg_ean in products) <= max_skus, f"Outlet_Assortment_{c_out}_{metier}_{subaxis}_{brand}"
-                logger.debug(f"Added assortment constraint for outlet {c_out}, metier {metier}, subaxis {subaxis}, brand {brand}: max {max_skus} SKUs (EAN level).")
+            assortment_key = (metier, subaxis, brand)
+            max_skus_from_rule = outlet_assortment_dict.get(assortment_key) 
+            
+            if max_skus_from_rule is not None and max_skus_from_rule >= 0:
+                # Get existing SKU count for this specific outlet and assortment group
+                existing_count_key = (c_out, metier, subaxis, brand)
+                existing_count = existing_skus_per_assortment_group.get(existing_count_key, 0)
+                
+                # Calculate available slots for new allocations
+                available_slots = max(0, max_skus_from_rule - existing_count)
+                
+                # Apply constraint: new_allocations <= available_slots
+                model += pulp.lpSum(y_ean_channel[pg_ean, c_out] for pg_ean in group_products_eans if pg_ean in products) <= available_slots, f"Outlet_Assortment_{c_out}_{metier}_{subaxis}_{brand}"
+                
+                logger.debug(f"Assortment constraint for outlet {c_out}, metier {metier}, subaxis {subaxis}, brand {brand}:")
+                logger.debug(f"  Max SKUs from rule: {max_skus_from_rule}")
+                logger.debug(f"  Existing SKUs in outlet: {existing_count}")
+                logger.debug(f"  Available slots for new allocations: {available_slots}")
+                logger.debug(f"  Constraint applied: new_allocations <= {available_slots} (EAN level).")
+            else:
+                logger.debug(f"Assortment rule for metier {metier}, subaxis {subaxis}, brand {brand} is not defined or negative. Skipping constraint.")
 
     # Linking constraints for x[p,plant,c] and y_ean_plant_channel[p,plant,c] are already done above.
     # Linking constraints for y_ean_plant_channel[p,plant,c] and y_ean_channel[p,c] are also done above.
@@ -597,10 +707,20 @@ if __name__ == '__main__':
         )
         logger.info("OptimizationParameters object created.")
 
+        logger.info("--- Calculating Existing SKUs per Assortment Group (in __main__) ---")
+        outlet_channels_list = channels_df[channels_df['channel_type'] == 'outlet'].index.tolist()
+        existing_skus_per_assortment_group = count_existing_skus_per_assortment_group(
+            in_store_inventory_df=raw_in_store_inventory_df,
+            products_df=products_df,
+            outlet_channels=outlet_channels_list
+        )
+        logger.info(f"Calculated existing SKUs for {len(existing_skus_per_assortment_group)} assortment groups.")
+
         logger.info("\n--- Running Optimization (in __main__) ---")
         model, status, results = optimize_allocation(
             products_df, channels_df, inventory_df, demand_dict, params, 
-            existing_stock_dict, product_channel_abc_map, sellin_ranking_dict # Pass sellin_ranking_dict
+            existing_stock_dict, product_channel_abc_map, sellin_ranking_dict, # Pass sellin_ranking_dict
+            existing_skus_per_assortment_group # Pass new parameter
         )
         
         logger.info(f"\nSolver Status: {status}")
