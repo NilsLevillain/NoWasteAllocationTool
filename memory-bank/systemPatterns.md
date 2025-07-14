@@ -37,6 +37,8 @@ Frontend (HTML/JS/CSS) <--> Flask Controllers <--> Optimization Service <--> PuL
                 v                    v                      v                    v
         Visualization Components  Data Validators     Model Factories      Solver Adapters
 
+- **Solver-API Dependency**: The `/api/auto_allocate` endpoint in `main.py` directly invokes the `optimize_allocation` function (and other helper functions like `calculate_abc_classification_and_new_skus`, `count_existing_skus_per_assortment_group`) from `backend/solver.py`. This means any changes to the function signatures or required arguments in `backend/solver.py` must be reflected in the `main.py` API calls to ensure the auto-allocation process functions correctly from the frontend.
+
 The system uses a Service-oriented architecture pattern to separate the optimization logic from the web interface.
 
 ## Data Flow Patterns

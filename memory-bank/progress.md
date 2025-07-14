@@ -58,20 +58,20 @@
     - Updated the data filtering logic in `/api/allocation_data` to `if item_data['units'] > 0:` since `item_data['units']` now correctly reflects the allocatable quantity.
     - Corrected syntax errors (missing comma) in `main.py` that arose during previous modifications.
 -   **Optimization Engine and Scoring Logic Fixed**: Addressed a core issue in the optimization engine where quantity limits from `PushNewSKURule` and `CoverageDaysRule` constraints were preventing the selection of high-scoring SKUs. Implemented a "Big M" formulation to ensure these quantity limits are only applied *after* the SKU is selected. Also, the tests were updated to isolate the channel being tested.
+-   **Enhanced Outlet Assortment Constraint with Existing Stock Consideration (July 2025)**:
+    -   Implemented `count_existing_skus_per_assortment_group` function in `backend/solver.py` to count existing EANs per `(outlet, metier, subaxis, brand)` from in-store inventory.
+    -   Modified `optimize_allocation` in `backend/solver.py` to accept this new count.
+    -   Updated the outlet assortment constraint logic in `backend/solver.py` to calculate `available_slots = max(0, max_skus - existing_count)` and apply `new_allocations <= available_slots`. This prevents over-allocation by respecting total SKU limits (existing + new).
+    -   Integrated the call to `count_existing_skus_per_assortment_group` and passed its result to `optimize_allocation` within the `/api/auto_allocate` endpoint in `main.py`.
+    -   Resolved `KeyError` issues in `backend/solver.py` by ensuring correct standardized column names (`metier`, `subAxe`, `signature`) are used when accessing product attributes for assortment grouping.
+    -   Added comprehensive unit tests in `tests/test_solver.py` for `count_existing_skus_per_assortment_group` (including edge cases) and for the updated outlet assortment constraint logic.
+    -   Added comprehensive unit tests for `load_sellin_ranking_dict` in `tests/test_utils.py`.
 
 ## Remaining Work
 - Continue refinement of the optimization engine constraints and objective function as outlined in `activeContext.md`.
 - Further development and enhancement of the User Interface components.
 - Deepen the understanding of allocation logic and its impact on solutions. 
 - Implementation of new features: seeing the allocation over different period of time, validating the allocation.
-- Modify the default parameters like seasonality_coefficient and modify the UI for it (the parameter should be selectable by end users before auto-allocating), modify the COGs with real data, and all other default "to come" data as well that will come in InputData folder.
-
-## Remaining Work
-- Continue refinement of the optimization engine constraints and objective function as outlined in `activeContext.md`.
-- Further development and enhancement of the User Interface components.
-- Deepen the understanding of allocation logic and its impact on solutions. 
-- Implementation of new features : saving allocation, seeing the allocation over different period of time, validating the allocation
-- Allocation % and remaining qty columns in the table in the 'edit allocation' page should be dynamic regarding what is inside the table.
 - Modify the default parameters like seasonality_coefficient and modify the UI for it (the parameter should be selectable by end users before auto-allocating), modify the COGs with real data, and all other default "to come" data as well that will come in InputData folder.
 
 ## Current Status
