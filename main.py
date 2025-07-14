@@ -11,7 +11,7 @@ import os
 from sqlalchemy.orm import joinedload
 from collections import defaultdict
 from backend.models import db, Product, Inventory, Channel, Allocation, User, AllocationRun
-from backend.solver import optimize_allocation, calculate_abc_classification_and_new_skus
+from backend.solver import optimize_allocation, calculate_abc_classification_and_new_skus, count_existing_skus_per_assortment_group
 from backend.schemas import OptimizationParameters, CoverageDaysRule, OutletSKUCapacityRule, OutletAssortmentRule, PushNewSKURule
 from backend.config import Config
 from backend.utils import (
@@ -314,9 +314,17 @@ def auto_allocate_endpoint():
         
         sellin_ranking_dict = load_sellin_ranking_dict(sellin_file_path)
         
+        outlet_channels_list = channels_df[channels_df['channel_type'] == 'outlet'].index.tolist()
+        existing_skus_per_assortment_group = count_existing_skus_per_assortment_group(
+            in_store_inventory_df=raw_in_store_inventory_df,
+            products_df=products_df,
+            outlet_channels=outlet_channels_list
+        )
+        
         model, status, allocation_results = optimize_allocation(
             products_df, channels_df, inventory_df, demand_dict, parameters, 
-            existing_stock_dict, product_channel_abc_map, sellin_ranking_dict
+            existing_stock_dict, product_channel_abc_map, sellin_ranking_dict,
+            existing_skus_per_assortment_group
         )
         if status != 'Optimal': return jsonify({'error': f'Solver status: {status}'}), 500
         

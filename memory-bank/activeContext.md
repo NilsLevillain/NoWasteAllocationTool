@@ -113,6 +113,14 @@
             - Modified `main.py` (`/api/allocation_data` endpoint) so that the `units` field sent to the frontend is now `min(StockToAllocate, AvailableStock)`. This aligns the displayed 'Units' with the actual quantity considered by the solver's supply constraints.
             - Updated the data filtering logic in `/api/allocation_data` to `if item_data['units'] > 0:` since `item_data['units']` now correctly reflects the allocatable quantity.
             - Corrected syntax errors (missing comma) in `main.py` that arose during previous modifications.
+          - **Enhanced Outlet Assortment Constraint with Existing Stock Consideration (July 2025)**:
+            - Implemented `count_existing_skus_per_assortment_group` function in `backend/solver.py` to count existing EANs per `(outlet, metier, subaxis, brand)` from in-store inventory.
+            - Modified `optimize_allocation` in `backend/solver.py` to accept this new count.
+            - Updated the outlet assortment constraint logic in `backend/solver.py` to calculate `available_slots = max(0, max_skus - existing_count)` and apply `new_allocations <= available_slots`. This prevents over-allocation by respecting total SKU limits (existing + new).
+            - Integrated the call to `count_existing_skus_per_assortment_group` and passed its result to `optimize_allocation` within the `/api/auto_allocate` endpoint in `main.py`.
+            - Resolved `KeyError` issues in `backend/solver.py` by ensuring correct standardized column names (`metier`, `subAxe`, `signature`) are used when accessing product attributes for assortment grouping.
+            - Added comprehensive unit tests in `tests/test_solver.py` for `count_existing_skus_per_assortment_group` (including edge cases) and for the updated outlet assortment constraint logic.
+            - Added comprehensive unit tests for `load_sellin_ranking_dict` in `tests/test_utils.py`.
                     
 ## Learnings from User Testing
           - Users prefer tabular views with sorting/filtering over purely graphical representations
